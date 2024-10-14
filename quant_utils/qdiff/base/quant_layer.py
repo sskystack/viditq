@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from qdiff.quantizer.base_quantizer import StaticQuantizer, DynamicQuantizer
+from qdiff.base.base_quantizer import StaticQuantizer, DynamicQuantizer
 
 class QuantizedLinear(torch.nn.Linear):
     """
@@ -9,7 +9,6 @@ class QuantizedLinear(torch.nn.Linear):
     adpot the static weight quantization,
     and the dynamic activation quantization.
     """
-
     def __init__(
         self,
         in_features: int,
