@@ -1,3 +1,4 @@
+import torch.nn as nn
 class StraightThrough(nn.Module):
     def __init__(self, channel_num: int = 1):
         super().__init__()
@@ -5,7 +6,7 @@ class StraightThrough(nn.Module):
     def forward(self, input):
         return input
 
-def apply_hook_to_submodules(module, class_type, hook_function, parent_name="", **kwargs):
+def apply_hook_to_submodules(module, class_type, hook_function, parent_name="", has_return=False, **kwargs):
     """
     Recursively iterates through all submodules of a PyTorch module and applies a hook function
     if the submodule matches the specified class type. The parent name is appended to the submodule name.
@@ -16,10 +17,26 @@ def apply_hook_to_submodules(module, class_type, hook_function, parent_name="", 
         hook_function (callable): The function to apply if a submodule matches the class type.
         parent_name (str): The name of the parent module (used for recursion).
     """
+    if has_return:
+        return_d = {}
+        
     for name, submodule in module.named_children():
         full_name = f"{parent_name}.{name}" if parent_name else name
+        parent_module = module
+
+        if 'name' in kwargs:
+            kwargs['name']=name
+        if 'full_name' in kwargs:
+            kwargs['full_name'] = full_name
+        if 'parent_module' in kwargs:
+            kwargs['parent_module'] = module
         if isinstance(submodule, class_type):
-            hook_function(submodule, full_name, **kwargs)
+            if has_return:
+                return_d[full_name] = hook_function(submodule, **kwargs)
+            else:
+                hook_function(submodule, **kwargs)               
         
         # Recursively apply the function to submodules
-        apply_hook_to_submodules(submodule, class_type, hook_function, full_name)
+        apply_hook_to_submodules(submodule, class_type, hook_function, full_name, **kwargs)
+    if has_return:
+        return return_d
