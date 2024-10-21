@@ -1,4 +1,5 @@
 import torch.nn as nn
+
 class StraightThrough(nn.Module):
     def __init__(self, channel_num: int = 1):
         super().__init__()
@@ -19,7 +20,7 @@ def apply_hook_to_submodules(module, class_type, hook_function, parent_name="", 
     """
     if has_return:
         return_d = {}
-        
+
     for name, submodule in module.named_children():
         full_name = f"{parent_name}.{name}" if parent_name else name
         parent_module = module
@@ -34,9 +35,10 @@ def apply_hook_to_submodules(module, class_type, hook_function, parent_name="", 
             if has_return:
                 return_d[full_name] = hook_function(submodule, **kwargs)
             else:
-                hook_function(submodule, **kwargs)               
-        
+                hook_function(submodule, **kwargs)
+
         # Recursively apply the function to submodules
         apply_hook_to_submodules(submodule, class_type, hook_function, full_name, **kwargs)
     if has_return:
         return return_d
+
