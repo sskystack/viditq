@@ -31,6 +31,8 @@ def apply_hook_to_submodules(module, class_type, hook_function, parent_name="", 
             kwargs['full_name'] = full_name
         if 'parent_module' in kwargs:
             kwargs['parent_module'] = module
+        if 'quant_param_dict' in kwargs:
+            kwargs['quant_param_dict'] = quant_param_dict
         if isinstance(submodule, class_type):
             if has_return:
                 return_d[full_name] = hook_function(submodule, **kwargs)
