@@ -12,124 +12,21 @@ save the quantized model checkpoint
 import torch
 import sys
 import os
-sys.path.append('/home/zhuhongyu/diffuser-dev')
 torch.backends.cuda.matmul.allow_tf32 = True
 torch.backends.cudnn.allow_tf32 = True
-from models.models import DiT,DiT_models
-from download import find_model
 from torchvision.utils import save_image
 from diffusion import create_diffusion
 from diffusers.models import AutoencoderKL
 import argparse
 import numpy as np
 from omegaconf import OmegaConf
-
+from models.models import DiT,DiT_models
 import torch.nn as nn
 import torch.nn.functional as F
-from quant_utils.qdiff.base.base_quantizer import StaticQuantizer, DynamicQuantizer, BaseQuantizer
-from quant_utils.qdiff.base.quant_layer import QuantizedLinear
-from quant_utils.qdiff.utils import apply_hook_to_submodules
-# save the calib data from hooked inputs
-def load_calib_data():
-    pass
-
-# save the calib data from hooked inputs
-def save_quant_ckpt():
-    pass
-
-def quant_layer_refactor_(submodule,name,parent_module,quant_config,full_name):
-    if 't_embedder' in full_name or 'adaLN_modulation' in full_name:
-        return
-    in_features=submodule.in_features
-    out_features=submodule.out_features
-    if submodule.bias is not None:
-        bias=True
-    else:
-        bias=False
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    setattr(parent_module, name, QuantizedLinear(in_features,out_features,bias,device,quant_config,submodule))
-    # also merge set_module_name_for_quantizer here. after replacing the quant_layer, also set the quantizer.
-
-def load_quant_param_dict_(submodule, full_name, origin_module):
-    submodule.delta=origin_module.quant_params_dict[full_name][0]
-    submodule.zero_point=origin_module.quant_params_dict[full_name][1]
-
-def save_quant_param_dict_(submodule, full_name,origin_module):
-    origin_module.quant_params_dict[full_name] = []
-    origin_module.quant_params_dict[full_name].append(submodule.delta)
-    origin_module.quant_params_dict[full_name].append(submodule.zero_point)
-
-def set_init_done_(submodule):
-    submodule.init_done = True
-
-class QuantDit(DiT):
-    def __init__(
-        self,
-        quant_config:dict,
-        ckpt_path,
-        input_size=32,
-        patch_size=2,
-        in_channels=4,
-        hidden_size=1152,
-        depth=28,
-        num_heads=16,
-        mlp_ratio=4.0,
-        class_dropout_prob=0.1,
-        num_classes=1000,
-        learn_sigma=True,
-        **kwargs
-    ): 
-        super().__init__(
-        input_size,
-        patch_size,
-        in_channels,
-        hidden_size,
-        depth,
-        num_heads,
-        mlp_ratio,
-        class_dropout_prob,
-        num_classes,
-        learn_sigma)
-        #state_dict = find_model(ckpt_path)
-        self.quant_config=quant_config
-        #self.load_state_dict(state_dict)
-        self.quant_params_dict = {}
-        self.quant_layer_refactor()
-        self.load_state_dict(torch.load('model_params.pth'))
-    
-    def quant_layer_refactor(self):
-        apply_hook_to_submodules(self, 
-                class_type=nn.Linear,
-                hook_function=quant_layer_refactor_,
-                name=None,
-                parent_module=None,
-                quant_config=self.quant_config,
-                full_name=None
-                )
-
-    def save_quant_params_dict(self):
-        apply_hook_to_submodules(self, 
-                class_type=BaseQuantizer,
-                hook_function=save_quant_param_dict_,
-                full_name=None,
-                origin_module=self
-                )
-
-    def load_quant_params_dict(self, quant_param_dict):
-        apply_hook_to_submodules(self, 
-                class_type=BaseQuantizer,
-                hook_function=load_quant_param_dict_,
-                full_name=None,
-                origin_module=self)
-
-    def set_init_done(self):
-        apply_hook_to_submodules(self, 
-                class_type=BaseQuantizer,
-                hook_function=set_init_done_,)
-
-        
-        
-
+from qdiff.base.base_quantizer import StaticQuantizer, DynamicQuantizer, BaseQuantizer
+from qdiff.base.quant_layer import QuantizedLinear
+from qdiff.utils import apply_hook_to_submodules
+from models.quant_dit import QuantDit
 
 def main(args):
 
