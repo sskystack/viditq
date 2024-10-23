@@ -21,14 +21,14 @@ import torch.nn as nn
 import torch.nn.functional as F
 from qdiff.base.base_quantizer import StaticQuantizer, DynamicQuantizer, BaseQuantizer
 from qdiff.base.quant_layer import QuantizedLinear
-from qdiff.utils import apply_hook_to_submodules
+from qdiff.utils import apply_func_to_submodules
 # save the calib data from hooked inputs
 def load_calib_data():
     pass
 
 # save the calib data from hooked inputs
-def save_quant_ckpt(loaded_model):
-    torch.save(loaded_model.state_dict(), 'model_params.pth')
+# def save_quant_ckpt(loaded_model):
+    # torch.save(loaded_model.state_dict(), 'model_params.pth')
 
 def quant_layer_refactor_(submodule,name,parent_module,quant_config,full_name):
     if 't_embedder' in full_name or 'adaLN_modulation' in full_name:
@@ -43,13 +43,17 @@ def quant_layer_refactor_(submodule,name,parent_module,quant_config,full_name):
     setattr(parent_module, name, QuantizedLinear(in_features,out_features,bias,device,quant_config,submodule))
     # also merge set_module_name_for_quantizer here. after replacing the quant_layer, also set the quantizer.
 
-def load_quant_param_dict_():
-    pass
+def load_quant_param_dict_(submodule, full_name, quant_param_dict, model):
+    submodule.delta = quant_param_dict[full_name]['delta']
+    submodule.zero_point = quant_param_dict[full_name]['zero_point']
 
-def save_quant_param_dict_(submodule, full_name,origin_module):
-    origin_module.quant_params_dict[full_name] = []
-    origin_module.quant_params_dict[full_name].append(submodule.delta)
-    origin_module.quant_params_dict[full_name].append(submodule.zero_point)
+    # update the quant_model.quant_param_dict also
+    model.quant_param_dict[full_name] = quant_param_dict[full_name]
+
+def save_quant_param_dict_(submodule, full_name, model):
+    model.quant_param_dict[full_name] = {}
+    model.quant_param_dict[full_name]['delta'] = submodule.delta
+    model.quant_param_dict[full_name]['zero_point'] = submodule.zero_point
 
 def set_init_done_(submodule):
     submodule.init_done = True
@@ -82,40 +86,44 @@ class QuantDit(DiT):
         class_dropout_prob,
         num_classes,
         learn_sigma)
+
         state_dict = find_model(ckpt_path)
         self.quant_config=quant_config
         self.load_state_dict(state_dict)
-        self.quant_params_dict = {}
+        self.quant_param_dict = {}
         self.quant_layer_refactor()
     
     def quant_layer_refactor(self):
-        apply_hook_to_submodules(self, 
+        apply_func_to_submodules(self, 
                 class_type=nn.Linear,
-                hook_function=quant_layer_refactor_,
+                function=quant_layer_refactor_,
                 name=None,
                 parent_module=None,
                 quant_config=self.quant_config,
                 full_name=None
                 )
 
-    def save_quant_params_dict(self):
-        apply_hook_to_submodules(self, 
+    def save_quant_param_dict(self):
+        apply_func_to_submodules(self, 
                 class_type=BaseQuantizer,
-                hook_function=save_quant_param_dict_,
+                function=save_quant_param_dict_,
                 full_name=None,
-                origin_module=self
+                model=self
                 )
 
-    def load_quant_params_dict(self, quant_param_dict):
-        apply_hook_to_submodules(self, 
+    def load_quant_param_dict(self, quant_param_dict):
+        apply_func_to_submodules(self, 
                 class_type=BaseQuantizer,
-                hook_function=load_quant_param_dict_,
-                quant_param_dict=quant_param_dict)
+                function=load_quant_param_dict_,
+                full_name=None,
+                quant_param_dict=quant_param_dict,
+                model=self,
+                )
 
     def set_init_done(self):
-        apply_hook_to_submodules(self, 
+        apply_func_to_submodules(self, 
                 class_type=BaseQuantizer,
-                hook_function=set_init_done_,)
+                function=set_init_done_,)
 
 
 if __name__ == "__main__":

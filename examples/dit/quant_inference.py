@@ -25,7 +25,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from qdiff.base.base_quantizer import StaticQuantizer, DynamicQuantizer, BaseQuantizer
 from qdiff.base.quant_layer import QuantizedLinear
-from qdiff.utils import apply_hook_to_submodules
+from qdiff.utils import apply_func_to_submodules
 from models.quant_dit import QuantDit
 
 def main(args):
@@ -54,7 +54,9 @@ def main(args):
      num_classes=args.num_classes,
      ).to(device)
 
-    
+    quant_param_ckpt = torch.load(args.quant_param_ckpt)
+    model.load_quant_param_dict(quant_param_ckpt)
+
     model.eval()  # important!
     diffusion = create_diffusion(str(args.num_sampling_steps))
     vae = AutoencoderKL.from_pretrained(f"stabilityai/sd-vae-ft-{args.vae}").to(device)
@@ -92,8 +94,9 @@ if __name__ == "__main__":
     parser.add_argument("--num-classes", type=int, default=1000)
     parser.add_argument("--cfg-scale", type=float, default=4.0)
     parser.add_argument("--num-sampling-steps", type=int, default=250)
-    parser.add_argument('--ptq-config', default='./configs/w8a8.yaml', type=str)
+    parser.add_argument('--ptq-config', default='./configs/config.yaml', type=str)
     parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument("--quant_param_ckpt", type=str, default="./quant_params.pth")
     parser.add_argument("--ckpt", type=str, default=None,
                         help="Optional path to a DiT checkpoint (default: auto-download a pre-trained DiT-XL/2 model).")
     args = parser.parse_args()

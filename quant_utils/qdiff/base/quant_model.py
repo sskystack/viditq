@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from qdiff.base.base_quantizer import StaticQuantizer, DynamicQuantizer
 from qdiff.base.quant_layer import QuantizedLinear
-from qdiff.utils import apply_hook_to_submodules
+from qdiff.utils import apply_func_to_submodules
 
 def quant_layer_refactor_():
     pass  # TODO:
@@ -39,25 +39,25 @@ class QuantModel(nn.Module):
         self.quant_layer_refactor()
     
     def quant_layer_refactor(self):
-        apply_hook_to_submodules(self, 
+        apply_func_to_submodules(self, 
                 class_type=nn.Linear,
-                hook_function=quant_layer_refactor_)
+                function=quant_layer_refactor_)
 
     def save_quant_params_dict(self):
-        apply_hook_to_submodules(self, 
+        apply_func_to_submodules(self, 
                 class_type=BaseQuantizer,
-                hook_function=save_quant_param_dict_)
+                function=save_quant_param_dict_)
 
     def load_quant_params_dict(self, quant_param_dict):
-        apply_hook_to_submodules(self, 
+        apply_func_to_submodules(self, 
                 class_type=BaseQuantizer,
-                hook_function=load_quant_param_dict_,
+                function=load_quant_param_dict_,
                 quant_param_dict=quant_param_dict)
 
     def set_init_done(self):
-        apply_hook_to_submodules(self, 
+        apply_func_to_submodules(self, 
                 class_type=BaseQuantizer,
-                hook_function=set_init_done_,)
+                function=set_init_done_,)
 
     def forward(self, x, *args, **kwargs):
         raise NotImplementedError("should be implemented in subclass.")

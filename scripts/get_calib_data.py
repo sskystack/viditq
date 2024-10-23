@@ -5,7 +5,7 @@ to store the activation offline for activation probing and quantization
 """
 import torch.nn as nn
 
-from qdiff.utils import apply_hook_to_submodules
+from qdiff.utils import apply_func_to_submodules
 from qdiff.base.quant_layer import QuantizedLinear
 
 class SaveActivationHook:
@@ -72,9 +72,9 @@ if __name__ == '__main__':
         'hook_cls': SaveActivationHook,
     }
 
-    hook_d = apply_hook_to_submodules(net,
+    hook_d = apply_func_to_submodules(net,
                             class_type=nn.Linear,
-                            hook_function=add_hook_to_module_,
+                            function=add_hook_to_module_,
                             has_return=True,
                             **kwargs
                             )

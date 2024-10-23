@@ -8,8 +8,6 @@ import sys
 import os
 torch.backends.cuda.matmul.allow_tf32 = True
 torch.backends.cudnn.allow_tf32 = True
-from models import DiT,DiT_models
-from download import find_model
 from torchvision.utils import save_image
 from diffusion import create_diffusion
 from diffusers.models import AutoencoderKL
@@ -17,11 +15,12 @@ import argparse
 import numpy as np
 from omegaconf import OmegaConf
 from models.models import DiT,DiT_models
+from models.download import find_model
 import torch.nn as nn
 import torch.nn.functional as F
-from quant_utils.qdiff.base.base_quantizer import StaticQuantizer, DynamicQuantizer, BaseQuantizer
-from quant_utils.qdiff.base.quant_layer import QuantizedLinear
-from quant_utils.qdiff.utils import apply_hook_to_submodules
+from qdiff.base.base_quantizer import StaticQuantizer, DynamicQuantizer, BaseQuantizer
+from qdiff.base.quant_layer import QuantizedLinear
+from qdiff.utils import apply_func_to_submodules
 from models.quant_dit import QuantDit
 def main(args):
 
@@ -49,8 +48,7 @@ def main(args):
      num_classes=args.num_classes,
      ).to(device)
 
-
-    model.eval()  # important!
+    model.eval()  # INFO: make sure to set the model into eval mode
     diffusion = create_diffusion(str(args.num_sampling_steps))
     vae = AutoencoderKL.from_pretrained(f"stabilityai/sd-vae-ft-{args.vae}").to(device)
 
@@ -67,14 +65,8 @@ def main(args):
     t = torch.tensor([1] * z.shape[0], device=device)
     _=model(z,t,y)
     model.set_init_done()
-    model.save_quant_params_dict()
-    np.save('quant_params_dict.npy', model.quant_params_dict)
-    # convert_model_quantized
-
-    # conduct model inference
-
-    # save the quant params
-    save_quant_ckpt(model)
+    model.save_quant_param_dict()
+    torch.save(model.quant_param_dict, 'quant_params.pth')
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
