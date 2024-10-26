@@ -26,39 +26,52 @@ from qdiff.utils import apply_func_to_submodules
 def load_calib_data():
     pass
 
-# save the calib data from hooked inputs
-# def save_quant_ckpt(loaded_model):
-    # torch.save(loaded_model.state_dict(), 'model_params.pth')
+def quant_layer_refactor_(submodule,name,parent_module,quant_config,full_name):\
 
-def quant_layer_refactor_(submodule,name,parent_module,quant_config,full_name):
+    quant_layer_type = QuantizedLinear
+    if quant_config.smooth_quant is not None:
+        from qdiff.smooth_quant.sq_quant_layer import SQQuantizedLinear
+
+        import re
+        layer_regex = quant_config.smooth_quant.layer_name_regex
+        match = re.search(re.compile(layer_regex), full_name)
+        if match:
+            quant_layer_type = SQQuantizedLinear
+            print('setting smooth quant for layer {}'.format(full_name))
+
     if 't_embedder' in full_name or 'adaLN_modulation' in full_name:
-        return
+        return # skip quantizing these layers
     in_features=submodule.in_features
     out_features=submodule.out_features
-    if submodule.bias is not None:
-        bias=True
-    else:
-        bias=False
+    bias  = True if submodule.bias is not None else False
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    setattr(parent_module, name, QuantizedLinear(in_features,out_features,bias,device,quant_config,submodule))
+    setattr(parent_module, name, quant_layer_type(in_features,out_features,bias,device,quant_config,submodule))
     # also merge set_module_name_for_quantizer here. after replacing the quant_layer, also set the quantizer.
 
-def load_quant_param_dict_(submodule, full_name, quant_param_dict, model):
+def load_quant_param_dict_(submodule, full_name, parent_module, quant_param_dict, model):
     submodule.delta = quant_param_dict[full_name]['delta']
     submodule.zero_point = quant_param_dict[full_name]['zero_point']
+
+    if hasattr(parent_module, 'channel_mask'):
+        parent_module.channel_mask = quant_param_dict[full_name]['channel_mask']
 
     # update the quant_model.quant_param_dict also
     model.quant_param_dict[full_name] = quant_param_dict[full_name]
 
-def save_quant_param_dict_(submodule, full_name, model):
+def save_quant_param_dict_(submodule, full_name, parent_module, model):
+
     model.quant_param_dict[full_name] = {}
     model.quant_param_dict[full_name]['delta'] = submodule.delta
     model.quant_param_dict[full_name]['zero_point'] = submodule.zero_point
 
+    # parent module: the quant_layer
+    if hasattr(parent_module, 'channel_mask'):
+        model.quant_param_dict[full_name]['channel_mask'] = parent_module.channel_mask
+
 def set_init_done_(submodule):
     submodule.init_done = True
 
-class QuantDit(DiT):
+class QuantDiT(DiT):
     def __init__(
         self,
         quant_config:dict,
@@ -104,24 +117,26 @@ class QuantDit(DiT):
                 )
 
     def save_quant_param_dict(self):
-        apply_func_to_submodules(self, 
+        apply_func_to_submodules(self,
                 class_type=BaseQuantizer,
                 function=save_quant_param_dict_,
                 full_name=None,
+                parent_module=None,
                 model=self
                 )
 
     def load_quant_param_dict(self, quant_param_dict):
-        apply_func_to_submodules(self, 
+        apply_func_to_submodules(self,
                 class_type=BaseQuantizer,
                 function=load_quant_param_dict_,
                 full_name=None,
+                parent_module=None,
                 quant_param_dict=quant_param_dict,
                 model=self,
                 )
 
     def set_init_done(self):
-        apply_func_to_submodules(self, 
+        apply_func_to_submodules(self,
                 class_type=BaseQuantizer,
                 function=set_init_done_,)
 

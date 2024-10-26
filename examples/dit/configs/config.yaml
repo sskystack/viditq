@@ -2,6 +2,7 @@ model:
     model_id: "opensora"
     model_type: 'opensora'  # ['sd','sdxl']
 calib_data:
+    save_path: './calib_data.pth'
 weight:
   n_bits: 8
   group: 'tensor'

@@ -117,7 +117,7 @@ class DynamicQuantizer(BaseQuantizer):
             delta = (x_max - x_min)/(self.n_levels-1)
             zero_point = torch.round(-x_min/delta)
         
-        assert torch.all(delta > 1.e-4), "unexpected small delta exists"
+        assert torch.all(delta.abs() > 1.e-4), "unexpected small delta: {:.3f} exists".format(delta.abs().min())
         self.delta = delta.unsqueeze(-1)  # [G] -> [G,1]
         self.zero_point = zero_point.unsqueeze(-1)
 

@@ -25,8 +25,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 from qdiff.base.base_quantizer import StaticQuantizer, DynamicQuantizer, BaseQuantizer
 from qdiff.base.quant_layer import QuantizedLinear
-from qdiff.utils import apply_func_to_submodules
-from models.quant_dit import QuantDit
+from qdiff.utils import apply_func_to_submodules, seed_everything
+from models.quant_dit import QuantDiT
 
 def main(args):
 
@@ -44,7 +44,7 @@ def main(args):
     quant_config = OmegaConf.load(ptq_config_file)
 
     ckpt_path = args.ckpt or f"DiT-XL-2-{args.image_size}x{args.image_size}.pt"
-    model=QuantDit(quant_config,
+    model=QuantDiT(quant_config,
      ckpt_path,
      depth=28,
      hidden_size=1152, 
@@ -54,7 +54,7 @@ def main(args):
      num_classes=args.num_classes,
      ).to(device)
 
-    quant_param_ckpt = torch.load(args.quant_param_ckpt)
+    quant_param_ckpt = torch.load(args.quant_param_ckpt, weights_only=True)
     model.load_quant_param_dict(quant_param_ckpt)
 
     model.eval()  # important!
@@ -81,7 +81,9 @@ def main(args):
     samples, _ = samples.chunk(2, dim=0)  # Remove null class samples
     samples = vae.decode(samples / 0.18215).sample
     # convert_model_quantized
-    save_image(samples, "sample.png", nrow=4, normalize=True, value_range=(-1, 1))
+    if not os.path.exists('./imgs'):
+        os.makedirs('./imgs')
+    save_image(samples, "./imgs/sample_{:.4f}.png".format(quant_config.smooth_quant.alpha), nrow=4, normalize=True, value_range=(-1, 1))
     # conduct model inference
 
     # save the quant params
@@ -100,4 +102,5 @@ if __name__ == "__main__":
     parser.add_argument("--ckpt", type=str, default=None,
                         help="Optional path to a DiT checkpoint (default: auto-download a pre-trained DiT-XL/2 model).")
     args = parser.parse_args()
+    seed_everything(42)
     main(args)

@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from qdiff.models.quant_layer import QuantizedLinear
+from qdiff.base.quant_layer import QuantizedLinear
 
 class SQQuantizedLinear(QuantizedLinear):
     """
@@ -21,13 +21,20 @@ class SQQuantizedLinear(QuantizedLinear):
     ) -> None:
         super().__init__(in_features, out_features, bias, device, quant_config, fp_module)
 
-        self.alpha = quant_config['sq']['alpha']
+        self.alpha = quant_config.smooth_quant.alpha
         self.channel_mask = None  # assigned outside, during PTQ 
+
+    def get_channel_mask(self, act_mask):  # feed in the act channel-wise max mask
+        # generate the weight mask
+        weight_mask = self.fp_module.weight.abs().max(dim=0)[0] # [C_in]
+        channel_mask = (weight_mask.abs()**self.alpha) / (act_mask.abs()**(1-self.alpha)) # negative value with **alpha will raise nan
+        self.channel_mask = channel_mask
+        assert not torch.isnan(channel_mask.any()), "nan exists in channel mask"
 
     def update_quantized_weight_scaled(self):
         assert self.channel_mask is not None
-        C_out, C_in = fp_module.weight.shape
-        self.weight.data = self.w_quantizer(fp_module.weight / self.channel_mask.reshape([1, C_in]))
+        C_out, C_in = self.fp_module.weight.shape
+        self.weight.data = self.w_quantizer(self.fp_module.weight / self.channel_mask.reshape([1, C_in]))
 
     def forward(self, x: torch.Tensor, *args, **kwargs) -> torch.Tensor:
         """

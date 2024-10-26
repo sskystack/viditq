@@ -75,7 +75,7 @@ if __name__ == '__main__':
     hook_d = apply_func_to_submodules(net,
                             class_type=nn.Linear,
                             function=add_hook_to_module_,
-                            has_return=True,
+                            return_d={},
                             **kwargs
                             )
     dummpy_input = torch.rand([1,32,10], device='cuda')

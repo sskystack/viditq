@@ -1,7 +1,5 @@
 """
-conduct model PTQ process
-take in the orginal model and the calib data (optional)
-save the quantized model checkpoint
+The FP inference script of the DiT model, from the original repo
 """
 import torch
 import sys
@@ -19,12 +17,6 @@ from models.download import find_model
 import torch.nn as nn
 import torch.nn.functional as F
 
-from qdiff.base.base_quantizer import StaticQuantizer, DynamicQuantizer, BaseQuantizer
-from qdiff.base.quant_layer import QuantizedLinear
-from qdiff.utils import apply_func_to_submodules, seed_everything
-from models.quant_dit import QuantDiT
-
-
 def main(args):
 
     # PTQ main function:
@@ -41,71 +33,46 @@ def main(args):
     quant_config = OmegaConf.load(ptq_config_file)
 
     ckpt_path = args.ckpt or f"DiT-XL-2-{args.image_size}x{args.image_size}.pt"
-    model=QuantDiT(quant_config,
-     ckpt_path,
-     depth=28,
-     hidden_size=1152, 
-     patch_size=2, 
-     num_heads=16, 
+    model=DiT(
      input_size=latent_size,
+     patch_size=2, 
+     in_channels=4,
+     hidden_size=1152, 
+     depth=28,
+     num_heads=16, 
      num_classes=args.num_classes,
      ).to(device)
 
-    model.eval()  # INFO: make sure to set the model into eval mode
+    state_dict = find_model(ckpt_path)
+    model.load_state_dict(state_dict)
+
+    model.eval()  # important!
     diffusion = create_diffusion(str(args.num_sampling_steps))
     vae = AutoencoderKL.from_pretrained(f"stabilityai/sd-vae-ft-{args.vae}").to(device)
-
+    
     class_labels = [217, 363, 347, 574, 188, 99, 47, 379]
     n = len(class_labels)
     z = torch.randn(n, 4, latent_size, latent_size, device=device)
     y = torch.tensor(class_labels, device=device)
 
-    '''
-    INFO: The PTQ process:
-    for simple PTQ with dynamic act quant: 
-    the weight are quantized with quant_model initialization.
-    the act quant params are calculated online. 
-    '''
-    if quant_config.smooth_quant is not None:
-
-        # INFO: the SQQuantizedLayer are initialized with the quant_layer_refactor_ in quant_dit.py
-
-        def init_sq_channel_mask_(module, full_name, calib_data):
-            assert isinstance(module, SQQuantizedLinear)
-            act_mask = calib_data[full_name].mean(dim=0)  # [T, C], averaged over all timesteps
-            module.get_channel_mask(act_mask)  # set self.channel_mask
-            module.update_quantized_weight_scaled()
-
-        from qdiff.smooth_quant.sq_quant_layer import SQQuantizedLinear
-        '''
-        INFO: the smooth_quant quantization.
-        load act channel mask from the calib data
-        '''
-        assert quant_config.calib_data.save_path is not None
-        calib_data = torch.load(quant_config.calib_data.save_path, weights_only=True)  # default wtih weights_only=True, will cause warning
-        
-        # get the channel mask, iter through all layers
-        kwargs = {}
-        apply_func_to_submodules(model,
-                            class_type=SQQuantizedLinear,  # add hook to all objects of this cls
-                            function=init_sq_channel_mask_,
-                            calib_data = calib_data,
-                            full_name='',
-                            **kwargs
-                            )
-    model.set_init_done()
-    model.save_quant_param_dict()
-    torch.save(model.quant_param_dict, 'quant_params.pth')
-
-    # Test with model inference
+    # Setup classifier-free guidance:
     z = torch.cat([z, z], 0)
     y_null = torch.tensor([1000] * n, device=device)
     y = torch.cat([y, y_null], 0)
-    model_kwargs = dict(y=y, cfg_scale=args.cfg_scale)
+    model_kwargs = dict(y=y)
     t = torch.tensor([1] * z.shape[0], device=device)
-    _ = model(z,t,y)
+    _=model(z,y,t)
+    # Sample images:
+    samples = diffusion.p_sample_loop(
+        model.forward, z.shape, z, clip_denoised=False, model_kwargs=model_kwargs, progress=True, device=device
+    )
+    samples, _ = samples.chunk(2, dim=0)  # Remove null class samples
+    samples = vae.decode(samples / 0.18215).sample
+    # convert_model_quantized
+    save_image(samples, "fp_sample.png", nrow=4, normalize=True, value_range=(-1, 1))
+    # conduct model inference
 
-
+    # save the quant params
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -115,10 +82,10 @@ if __name__ == "__main__":
     parser.add_argument("--num-classes", type=int, default=1000)
     parser.add_argument("--cfg-scale", type=float, default=4.0)
     parser.add_argument("--num-sampling-steps", type=int, default=250)
-    parser.add_argument('--ptq-config', default='./configs/w8a8.yaml', type=str)
+    parser.add_argument('--ptq-config', default='./configs/config.yaml', type=str)
     parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument("--quant_param_ckpt", type=str, default="./quant_params.pth")
     parser.add_argument("--ckpt", type=str, default=None,
                         help="Optional path to a DiT checkpoint (default: auto-download a pre-trained DiT-XL/2 model).")
     args = parser.parse_args()
-    seed_everything(42)
     main(args)

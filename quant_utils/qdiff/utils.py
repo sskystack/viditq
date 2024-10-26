@@ -1,3 +1,7 @@
+import numpy as np
+import torch
+import random
+import os
 import torch.nn as nn
 
 class StraightThrough(nn.Module):
@@ -7,7 +11,7 @@ class StraightThrough(nn.Module):
     def forward(self, input):
         return input
 
-def apply_func_to_submodules(module, class_type, function, parent_name="", has_return=False, **kwargs):
+def apply_func_to_submodules(module, class_type, function, parent_name="", return_d=None, **kwargs):
     """
     Recursively iterates through all submodules of a PyTorch module and applies a hook function
     if the submodule matches the specified class type. The parent name is appended to the submodule name.
@@ -18,8 +22,6 @@ def apply_func_to_submodules(module, class_type, function, parent_name="", has_r
         function (callable): The function to apply if a submodule matches the class type.
         parent_name (str): The name of the parent module (used for recursion).
     """
-    if has_return:
-        return_d = {}
 
     for name, submodule in module.named_children():
         full_name = f"{parent_name}.{name}" if parent_name else name
@@ -34,13 +36,23 @@ def apply_func_to_submodules(module, class_type, function, parent_name="", has_r
         # if 'quant_param_dict' in kwargs:
             # kwargs['quant_param_dict'] = quant_param_dict
         if isinstance(submodule, class_type):
-            if has_return:
+            if return_d is not None:
                 return_d[full_name] = function(submodule, **kwargs)
             else:
                 function(submodule, **kwargs)
 
         # Recursively apply the function to submodules
-        apply_func_to_submodules(submodule, class_type, function, full_name, **kwargs)
-    if has_return:
+        apply_func_to_submodules(submodule, class_type, function, full_name, return_d, **kwargs)
+
+    if return_d is not None:
         return return_d
 
+def seed_everything(seed=42):
+    random.seed(seed)
+    os.environ['PYTHONHASHSEED'] = str(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)  # if you are using multi-GPU.
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
