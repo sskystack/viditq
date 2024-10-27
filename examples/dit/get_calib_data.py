@@ -5,6 +5,7 @@ add the hook and the save of the activation data
 import torch
 import sys
 import os
+import logging
 torch.backends.cuda.matmul.allow_tf32 = True
 torch.backends.cudnn.allow_tf32 = True
 from torchvision.utils import save_image
@@ -18,7 +19,7 @@ from models.download import find_model
 import torch.nn as nn
 import torch.nn.functional as F
 
-from qdiff.utils import apply_func_to_submodules
+from qdiff.utils import apply_func_to_submodules, seed_everything, setup_logging
 
 class SaveActivationHook:
 
@@ -47,7 +48,7 @@ def add_hook_to_module_(module, hook_cls):
 def main(args):
 
     # PTQ main function:
-    torch.manual_seed(args.seed)
+    seed_everything(args.seed)
     torch.set_grad_enabled(False)
     device="cuda" if torch.cuda.is_available() else "cpu"
 
@@ -55,6 +56,14 @@ def main(args):
         assert args.model == "DiT-XL/2", "Only DiT-XL/2 models are available for auto-download."
         assert args.image_size in [256, 512]
         assert args.num_classes == 1000
+
+    if args.log is not None:
+        if not os.path.exists(args.log):
+            os.makedirs(args.log)
+    log_file = os.path.join(args.log, 'run.log')
+    setup_logging(log_file)
+    logger = logging.getLogger(__name__)
+
     latent_size = args.image_size // 8
     ptq_config_file = args.ptq_config
     quant_config = OmegaConf.load(ptq_config_file)
@@ -113,10 +122,10 @@ def main(args):
     save_d = {}
     for k,v in hook_d.items():
         save_d[k] = torch.stack(v.outputs, dim=0)  # [N_timestep, C]
-        print(f'layer_name: {k}, hook_input_shape: {v.outputs[0].shape}')
+        logger.info(f'layer_name: {k}, hook_input_shape: {v.outputs[0].shape}')
         v.hook_handle.remove()
 
-    torch.save(save_d, quant_config.calib_data.save_path)
+    torch.save(save_d, os.path.join(args.log, quant_config.calib_data.save_path))
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -127,6 +136,7 @@ if __name__ == "__main__":
     parser.add_argument("--cfg-scale", type=float, default=4.0)
     parser.add_argument("--num-sampling-steps", type=int, default=250)
     parser.add_argument('--ptq-config', default='./configs/config.yaml', type=str)
+    parser.add_argument("--log", type=str)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--quant_param_ckpt", type=str, default="./quant_params.pth")
     parser.add_argument("--ckpt", type=str, default=None,

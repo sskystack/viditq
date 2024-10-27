@@ -6,6 +6,7 @@ save the quantized model checkpoint
 import torch
 import sys
 import os
+import logging
 torch.backends.cuda.matmul.allow_tf32 = True
 torch.backends.cudnn.allow_tf32 = True
 from torchvision.utils import save_image
@@ -21,14 +22,15 @@ import torch.nn.functional as F
 
 from qdiff.base.base_quantizer import StaticQuantizer, DynamicQuantizer, BaseQuantizer
 from qdiff.base.quant_layer import QuantizedLinear
-from qdiff.utils import apply_func_to_submodules, seed_everything
+from qdiff.utils import apply_func_to_submodules, seed_everything, setup_logging
 from models.quant_dit import QuantDiT
 
 
 def main(args):
 
     # PTQ main function:
-    torch.manual_seed(args.seed)
+
+    seed_everything(args.seed)
     torch.set_grad_enabled(False)
     device="cuda" if torch.cuda.is_available() else "cpu"
 
@@ -36,6 +38,17 @@ def main(args):
         assert args.model == "DiT-XL/2", "Only DiT-XL/2 models are available for auto-download."
         assert args.image_size in [256, 512]
         assert args.num_classes == 1000
+
+    if args.log is not None:
+        if not os.path.exists(args.log):
+            os.makedirs(args.log)
+    log_file = os.path.join(args.log, 'run.log')
+    setup_logging(log_file)
+    logger = logging.getLogger(__name__)
+
+    latent_size = args.image_size // 8
+    ptq_config_file = args.ptq_config
+
     latent_size = args.image_size // 8
     ptq_config_file = args.ptq_config
     quant_config = OmegaConf.load(ptq_config_file)
@@ -66,8 +79,12 @@ def main(args):
     the weight are quantized with quant_model initialization.
     the act quant params are calculated online. 
     '''
-    if quant_config.smooth_quant is not None:
 
+    '''
+    INFO: the smooth_quant quantization.
+    load act channel mask from the calib data
+    '''
+    if quant_config.get("smooth_quant",None) is not None:
         # INFO: the SQQuantizedLayer are initialized with the quant_layer_refactor_ in quant_dit.py
 
         def init_sq_channel_mask_(module, full_name, calib_data):
@@ -77,13 +94,10 @@ def main(args):
             module.update_quantized_weight_scaled()
 
         from qdiff.smooth_quant.sq_quant_layer import SQQuantizedLinear
-        '''
-        INFO: the smooth_quant quantization.
-        load act channel mask from the calib data
-        '''
+
         assert quant_config.calib_data.save_path is not None
-        calib_data = torch.load(quant_config.calib_data.save_path, weights_only=True)  # default wtih weights_only=True, will cause warning
-        
+        calib_data = torch.load(os.path.join(args.log, quant_config.calib_data.save_path), weights_only=True)  # default wtih weights_only=True, will cause warning
+
         # get the channel mask, iter through all layers
         kwargs = {}
         apply_func_to_submodules(model,
@@ -93,9 +107,31 @@ def main(args):
                             full_name='',
                             **kwargs
                             )
+
+    '''
+    INFO: the quarot quantization.
+    init and apply the rotation matrix
+    '''
+    if quant_config.get("quarot",None) is not None:
+
+        def init_rotation_matrix_(module, full_name):
+            from qdiff.quarot.quarot_utils import random_hadamard_matrix, matmul_hadU_cuda
+            module.get_rotation_matrix()
+            module.update_quantized_weight_rotated()
+
+        from qdiff.quarot.quarot_quant_layer import QuarotQuantizedLinear
+        # get the rotation matrix, iter through all layers
+        kwargs = {}
+        apply_func_to_submodules(model,
+                            class_type=QuarotQuantizedLinear,  # add hook to all objects of this cls
+                            function=init_rotation_matrix_,
+                            full_name='',
+                            **kwargs
+                            )
+
     model.set_init_done()
     model.save_quant_param_dict()
-    torch.save(model.quant_param_dict, 'quant_params.pth')
+    torch.save(model.quant_param_dict, os.path.join(args.log, 'quant_params.pth'))
 
     # Test with model inference
     z = torch.cat([z, z], 0)
@@ -104,7 +140,6 @@ def main(args):
     model_kwargs = dict(y=y, cfg_scale=args.cfg_scale)
     t = torch.tensor([1] * z.shape[0], device=device)
     _ = model(z,t,y)
-
 
 
 if __name__ == "__main__":
@@ -116,9 +151,9 @@ if __name__ == "__main__":
     parser.add_argument("--cfg-scale", type=float, default=4.0)
     parser.add_argument("--num-sampling-steps", type=int, default=250)
     parser.add_argument('--ptq-config', default='./configs/w8a8.yaml', type=str)
+    parser.add_argument("--log", type=str)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--ckpt", type=str, default=None,
                         help="Optional path to a DiT checkpoint (default: auto-download a pre-trained DiT-XL/2 model).")
     args = parser.parse_args()
-    seed_everything(42)
     main(args)

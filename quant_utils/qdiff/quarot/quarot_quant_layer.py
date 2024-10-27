@@ -1,7 +1,8 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from qdiff.models.quant_layer import QuantizedLinear
+from qdiff.base.quant_layer import QuantizedLinear
+from qdiff.quarot.quarot_utils import random_hadamard_matrix, matmul_hadU_cuda
 
 class QuarotQuantizedLinear(QuantizedLinear):
     """
@@ -21,10 +22,15 @@ class QuarotQuantizedLinear(QuantizedLinear):
     ) -> None:
         super().__init__(in_features, out_features, bias, device, quant_config, fp_module)
 
-        # TODO: the hadamard matrix
+        self.rotation_matrix = None   # init so could be load in quant_params
+
+    def get_rotation_matrix(self):
+        self.rotation_matrix = random_hadamard_matrix(self.in_features, "cuda")
 
     def update_quantized_weight_rotated(self):
-        pass
+        self.w_quantizer.init_done = False   # unset the init done to overwrite quant_params
+        self.weight.data = self.w_quantizer(torch.matmul(self.fp_module.weight.data.double(), self.rotation_matrix).float())
+        self.w_quantizer.init_done = True
 
     def forward(self, x: torch.Tensor, *args, **kwargs) -> torch.Tensor:
         """
@@ -35,7 +41,7 @@ class QuarotQuantizedLinear(QuantizedLinear):
         else:
             # reshape X into [G, -1] 
             B, N_token, C = x.shape
-            x = x*self.channel_mask.reshape([1,1,C])
+            x = torch.matmul(x.double(), self.rotation_matrix).float()
             x = x.reshape([B*N_token,-1])
 
             # quantize activation

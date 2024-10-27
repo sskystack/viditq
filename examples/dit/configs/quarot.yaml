@@ -3,8 +3,7 @@ model:
   model_type: opensora
 calib_data:
   save_path: ./calib_data.pth
-smooth_quant:
-  alpha: 0.88
+quarot:
   layer_name_regex: mlp.fc2
 weight:
   n_bits: 8

@@ -15,6 +15,7 @@ from diffusion import create_diffusion
 from diffusers.models import AutoencoderKL
 import argparse
 import numpy as np
+import logging
 from omegaconf import OmegaConf
 
 import torch.nn as nn
@@ -22,6 +23,9 @@ import torch.nn.functional as F
 from qdiff.base.base_quantizer import StaticQuantizer, DynamicQuantizer, BaseQuantizer
 from qdiff.base.quant_layer import QuantizedLinear
 from qdiff.utils import apply_func_to_submodules
+
+logger = logging.getLogger(__name__)
+
 # save the calib data from hooked inputs
 def load_calib_data():
     pass
@@ -29,7 +33,10 @@ def load_calib_data():
 def quant_layer_refactor_(submodule,name,parent_module,quant_config,full_name):\
 
     quant_layer_type = QuantizedLinear
-    if quant_config.smooth_quant is not None:
+    '''
+    METHOD: smooth_quant
+    '''
+    if quant_config.get("smooth_quant",None) is not None:
         from qdiff.smooth_quant.sq_quant_layer import SQQuantizedLinear
 
         import re
@@ -37,7 +44,19 @@ def quant_layer_refactor_(submodule,name,parent_module,quant_config,full_name):\
         match = re.search(re.compile(layer_regex), full_name)
         if match:
             quant_layer_type = SQQuantizedLinear
-            print('setting smooth quant for layer {}'.format(full_name))
+            logger.info('[INFO] setting smooth quant for layer {}'.format(full_name))
+    '''
+    METHOD: quarot
+    '''
+    if quant_config.get("quarot",None) is not None:
+        from qdiff.quarot.quarot_quant_layer import QuarotQuantizedLinear
+
+        import re
+        layer_regex = quant_config.quarot.layer_name_regex
+        match = re.search(re.compile(layer_regex), full_name)
+        if match:
+            quant_layer_type = QuarotQuantizedLinear
+            logger.info('setting quarot for layer {}'.format(full_name))
 
     if 't_embedder' in full_name or 'adaLN_modulation' in full_name:
         return # skip quantizing these layers
@@ -52,8 +71,13 @@ def load_quant_param_dict_(submodule, full_name, parent_module, quant_param_dict
     submodule.delta = quant_param_dict[full_name]['delta']
     submodule.zero_point = quant_param_dict[full_name]['zero_point']
 
+    # reinit the rotation_matrix/channe_mask 
     if hasattr(parent_module, 'channel_mask'):
         parent_module.channel_mask = quant_param_dict[full_name]['channel_mask']
+        parent_module.update_quantized_weight_scaled()
+    if hasattr(parent_module, 'rotation_matrix'):
+        parent_module.get_rotation_matrix() 
+        parent_module.update_quantized_weight_rotated()
 
     # update the quant_model.quant_param_dict also
     model.quant_param_dict[full_name] = quant_param_dict[full_name]
@@ -67,6 +91,8 @@ def save_quant_param_dict_(submodule, full_name, parent_module, model):
     # parent module: the quant_layer
     if hasattr(parent_module, 'channel_mask'):
         model.quant_param_dict[full_name]['channel_mask'] = parent_module.channel_mask
+    if hasattr(parent_module, 'rotation_matrix'):
+        model.quant_param_dict[full_name]['rotation_matrix'] = None   # skip saving, since rotation_matrix are large and same across layers
 
 def set_init_done_(submodule):
     submodule.init_done = True

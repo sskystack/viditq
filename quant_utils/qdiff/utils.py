@@ -2,6 +2,7 @@ import numpy as np
 import torch
 import random
 import os
+import logging.config
 import torch.nn as nn
 
 class StraightThrough(nn.Module):
@@ -56,3 +57,37 @@ def seed_everything(seed=42):
     torch.cuda.manual_seed_all(seed)  # if you are using multi-GPU.
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
+
+def setup_logging(log_file):
+    logging_config = {
+        'version': 1,
+        'disable_existing_loggers': False,
+        'formatters': {
+            'standard': {
+                'format': '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+            },
+        },
+        'handlers': {
+            'console': {
+                'class': 'logging.StreamHandler',
+                'level': 'DEBUG',
+                'formatter': 'standard',
+                'stream': 'ext://sys.stdout'
+            },
+            'file': {
+                'class': 'logging.FileHandler',
+                'level': 'DEBUG',
+                'formatter': 'standard',
+                'filename': log_file,
+                'mode': 'a',
+            }
+        },
+        'loggers': {
+            '': {
+                'handlers': ['console', 'file'],
+                'level': 'DEBUG',
+                'propagate': True
+            }
+        }
+    }
+    logging.config.dictConfig(logging_config)

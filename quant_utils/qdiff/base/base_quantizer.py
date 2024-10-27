@@ -71,11 +71,12 @@ class StaticQuantizer(BaseQuantizer):
         else:
             x_max = x.max(dim=1)[0]
             x_max[x_max<0] = 0. 
-            self.x_max = torch.max(self.x_max, x_max) if self.x_max is not None else x_max
+            # sometimes the weight are init on CPU, but new data on GPU needed for update quant_params (quarot)
+            self.x_max = torch.max(self.x_max.to(x_max.device), x_max) if self.x_max is not None else x_max
 
             x_min = x.min(dim=1)[0]
             x_min[x_min>0] = 0.
-            self.x_min = torch.min(self.x_min, x_min) if self.x_min is not None else x_min
+            self.x_min = torch.min(self.x_min.to(x_min.device), x_min) if self.x_min is not None else x_min
 
             delta = (x_max - x_min)/(self.n_levels-1)
             zero_point = torch.round(-x_min/delta)
