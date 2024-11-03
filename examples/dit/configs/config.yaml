@@ -10,4 +10,4 @@ weight:
 act:
   n_bits: 8
   group: 'tensor'
-  sym: False
+  sym: True

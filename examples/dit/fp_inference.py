@@ -44,7 +44,7 @@ def main(args):
      ).to(device)
 
     state_dict = find_model(ckpt_path)
-    model.load_state_dict(state_dict)
+    model.load_state_dict(state_dict, strict=False)
 
     model.eval()  # important!
     diffusion = create_diffusion(str(args.num_sampling_steps))

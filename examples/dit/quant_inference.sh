@@ -1,10 +1,12 @@
-CFG_NAME="sq"
-EXP_NAME="sq"
+CFG_NAME="config"
+EXP_NAME="cuda_test"
 
 # quant infer command
-python quant_inference.py \
+CUDA_VISIBLE_DEVICES=1 python quant_inference.py \
     --image-size 256\
     --seed 1 \
-    --ptq-config './configs/${CFG_NAME}.yaml'\
-	--log './logs/${EXP_NAME}' \
-    #--ckpt '/home/zhuhongyu/DiT-main/pretrained_models/DiT-XL-2-512x512.pt'
+    --ptq-config "./configs/${CFG_NAME}.yaml"\
+	--log "./logs/${EXP_NAME}" \
+	--hardware \
+	--profile \
+

@@ -63,7 +63,8 @@ def main(args):
      input_size=latent_size,
      num_classes=args.num_classes,
      ).to(device)
-
+    
+    model.half()
     model.eval()  # INFO: make sure to set the model into eval mode
     diffusion = create_diffusion(str(args.num_sampling_steps))
     vae = AutoencoderKL.from_pretrained(f"stabilityai/sd-vae-ft-{args.vae}").to(device)
