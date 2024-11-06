@@ -21,6 +21,7 @@ from diffusers.models import AutoencoderKL
 import argparse
 import numpy as np
 from omegaconf import OmegaConf
+from omegaconf import ListConfig
 from models.models import DiT,DiT_models
 import torch.nn as nn
 import torch.nn.functional as F
@@ -65,8 +66,12 @@ def main(args):
      ).to(device)
 
     model.half()   # use FP16
+    if_mixed_precision = isinstance(quant_config.weight.n_bits, ListConfig) or isinstance(quant_config.act.n_bits, ListConfig)
+    if if_mixed_precision:
+        model.bitwidth_refactor()
 
     if args.hardware:  # use the cuda kernel
+        assert not if_mixed_precision, ("mixed precision is currently not supported in CUDA kernels")
         if args.quant_weight_ckpt is None:
             save_path = os.path.join(args.log, 'int_weight.pt')
             if not os.path.exists(save_path):
@@ -86,7 +91,7 @@ def main(args):
     vae = AutoencoderKL.from_pretrained(f"stabilityai/sd-vae-ft-{args.vae}").to(device)
 
     # class_labels = [217, 363, 347, 574, 188, 99, 47, 379]
-    class_labels = [250]
+    class_labels = [47]
     n = len(class_labels)
     z = torch.randn(n, 4, latent_size, latent_size, device=device, dtype=torch.float16)
     y = torch.tensor(class_labels, device=device)  # type: long, not half

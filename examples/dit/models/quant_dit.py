@@ -27,7 +27,7 @@ from qdiff.utils import apply_func_to_submodules
 logger = logging.getLogger(__name__)
 
 
-def quant_layer_refactor_(submodule,name,parent_module,quant_config,full_name):\
+def quant_layer_refactor_(submodule,name,parent_module,quant_config,full_name):
 
     quant_layer_type = QuantizedLinear
     '''
@@ -67,6 +67,37 @@ def quant_layer_refactor_(submodule,name,parent_module,quant_config,full_name):\
     setattr(getattr(parent_module, name), 'module_name', full_name)
     setattr(getattr(parent_module, name).w_quantizer, 'module_name', full_name)
     setattr(getattr(parent_module, name).a_quantizer, 'module_name', full_name)
+
+def bitwidth_refactor_(submodule, name, parent_module, quant_config, full_name):
+    import re
+    layer_regex_list_w = quant_config.mixed_precision.weight.layer_name_regex
+    layer_regex_list_a = quant_config.mixed_precision.act.layer_name_regex
+
+    for idx, layer_regex in enumerate(layer_regex_list_w):
+        if len(layer_regex) == 0: # 0 being empty, skip
+            continue
+        else:
+            match = re.search(re.compile(layer_regex), full_name)
+            if match:
+                if idx == 0: # the FP16
+                    submodule.quant_mode = False
+                    logger.info(f'set the {full_name} W as FP16')
+                else:
+                    submodule.w_quantizer.bitwidth_refactor(idx-1)
+                    logger.info(f'set the {full_name} W as {submodule.w_quantizer.bitwidth_list[idx-1]} bit')
+
+    for idx, layer_regex in enumerate(layer_regex_list_a):
+        if len(layer_regex) == 0: # 0 being empty, skip
+            continue
+        else:
+            match = re.search(re.compile(layer_regex), full_name)
+            if match:
+                if idx == 0: # the FP16
+                    submodule.quant_mode = False
+                    logger.info(f'set the {full_name} A as FP16')
+                else:
+                    submodule.a_quantizer.bitwidth_refactor(idx-1)
+                    logger.info(f'set the {full_name} A as {submodule.a_quantizer.bitwidth_list[idx-1]} bit')
 
 def load_quant_param_dict_(submodule, full_name, parent_module, quant_param_dict, model):
     submodule.delta = quant_param_dict[full_name]['delta']
@@ -110,7 +141,7 @@ def quantize_and_save_weight_(submodule, full_name):
     submodule.w_quantizer.delta = submodule.w_quantizer.delta.view(-1).to(torch.float16)
     submodule.w_quantizer.zero_point = submodule.w_quantizer.zero_point.view(-1).to(torch.float16)
     scale = submodule.w_quantizer.delta
-    zero_point = submodule.w_quantizer.zero_point + 128  # the cuda kernel code uses 128+zero_point
+    zero_point = submodule.w_quantizer.zero_point  # the cuda kernel code uses 128+zero_point
 
     # INFO: the orginal module weight is the FP16 quantized dequant weight, 
     # replace with INT weight, should update the state_dict
@@ -414,6 +445,18 @@ class QuantDiT(DiT):
         # (3) load the integer weights
         quant_sd = torch.load(load_path, weights_only=True, map_location='cuda')
         self.load_state_dict(quant_sd, strict=False)
+
+    # ------ used for infer with mixed precision ------- 
+    def bitwidth_refactor(self):
+        apply_func_to_submodules(self,
+                class_type=QuantizedLinear,
+                function=bitwidth_refactor_,
+                name=None,
+                parent_module=None,
+                quant_config=self.quant_config,
+                full_name=None
+                )
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()

@@ -2,6 +2,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from qdiff.base.base_quantizer import StaticQuantizer, DynamicQuantizer
+from qdiff.base.mixed_precision_quantizer import MixedPrecisionStaticQuantizer, MixedPrecisionDynamicQuantizer
+from omegaconf import ListConfig
 
 class QuantizedLinear(torch.nn.Linear):
     """
@@ -22,8 +24,14 @@ class QuantizedLinear(torch.nn.Linear):
 
         self.fp_module = fp_module
         self.q_cfg = quant_config
-        self.w_quantizer = StaticQuantizer(quant_config['weight'])
-        self.a_quantizer = DynamicQuantizer(quant_config['act'])
+        if isinstance(quant_config.weight.n_bits, ListConfig):  # mixed precision
+            self.w_quantizer = MixedPrecisionStaticQuantizer(quant_config['weight'])
+        else:
+            self.w_quantizer = StaticQuantizer(quant_config['weight'])
+        if isinstance(quant_config.act.n_bits, ListConfig):
+            self.a_quantizer = MixedPrecisionDynamicQuantizer(quant_config['act'])
+        else:
+            self.a_quantizer = DynamicQuantizer(quant_config['act'])
 
         # quantize the weight from FP module, bias remain as FP16
         self.weight.data = self.w_quantizer(fp_module.weight)  # [C_out, C_in]
