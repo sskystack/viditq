@@ -1,23 +1,117 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from qdiff.base.base_quantizer import StaticQuantizer, DynamicQuantizer
+from qdiff.base.base_quantizer import BaseQuantizer, StaticQuantizer, DynamicQuantizer
 from qdiff.base.quant_layer import QuantizedLinear
 from qdiff.utils import apply_func_to_submodules
 
-def quant_layer_refactor_():
-    pass  # TODO:
-    # also merge set_module_name_for_quantizer here. after replacing the quant_layer, also set the quantizer.
+def quant_layer_refactor_(submodule,name,parent_module,quant_config,full_name):
 
-def load_quant_param_dict_():
-    pass
+    quant_layer_type = QuantizedLinear
+    '''
+    METHOD: smooth_quant
+    '''
+    if quant_config.get("smooth_quant",None) is not None:
+        from qdiff.smooth_quant.sq_quant_layer import SQQuantizedLinear
 
-def save_quant_param_dict_():
-    pass
+        import re
+        layer_regex = quant_config.smooth_quant.layer_name_regex
+        match = re.search(re.compile(layer_regex), full_name)
+        if match:
+            quant_layer_type = SQQuantizedLinear
+            logger.info('[INFO] setting smooth quant for layer {}'.format(full_name))
+    '''
+    METHOD: quarot
+    '''
+    if quant_config.get("quarot",None) is not None:
+        from qdiff.quarot.quarot_quant_layer import QuarotQuantizedLinear
 
-def set_init_done_():
-    pass
+        import re
+        layer_regex = quant_config.quarot.layer_name_regex
+        match = re.search(re.compile(layer_regex), full_name)
+        if match:
+            quant_layer_type = QuarotQuantizedLinear
+            logger.info('setting quarot for layer {}'.format(full_name))
 
+    if 't_embedder' in full_name or 'adaLN_modulation' in full_name or 'final_layer' in full_name:
+        return # skip quantizing these layers
+    in_features=submodule.in_features
+    out_features=submodule.out_features
+    bias  = True if submodule.bias is not None else False
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    setattr(parent_module, name, quant_layer_type(in_features,out_features,bias,device,quant_config,submodule))
+
+    # set the module_name for quant_layer and quantizers
+    setattr(getattr(parent_module, name), 'module_name', full_name)
+    setattr(getattr(parent_module, name).w_quantizer, 'module_name', full_name)
+    setattr(getattr(parent_module, name).a_quantizer, 'module_name', full_name)
+
+def bitwidth_refactor_(submodule, name, parent_module, quant_config, full_name):
+    import re
+    layer_regex_list_w = quant_config.mixed_precision.weight.layer_name_regex
+    layer_regex_list_a = quant_config.mixed_precision.act.layer_name_regex
+
+    for idx, layer_regex in enumerate(layer_regex_list_w):
+        if len(layer_regex) == 0: # 0 being empty, skip
+            continue
+        else:
+            match = re.search(re.compile(layer_regex), full_name)
+            if match:
+                if idx == 0: # the FP16
+                    submodule.quant_mode = False
+                    logger.info(f'set the {full_name} W as FP16')
+                else:
+                    submodule.w_quantizer.bitwidth_refactor(idx-1)
+                    logger.info(f'set the {full_name} W as {submodule.w_quantizer.bitwidth_list[idx-1]} bit')
+
+    for idx, layer_regex in enumerate(layer_regex_list_a):
+        if len(layer_regex) == 0: # 0 being empty, skip
+            continue
+        else:
+            match = re.search(re.compile(layer_regex), full_name)
+            if match:
+                if idx == 0: # the FP16
+                    submodule.quant_mode = False
+                    logger.info(f'set the {full_name} A as FP16')
+                else:
+                    submodule.a_quantizer.bitwidth_refactor(idx-1)
+                    logger.info(f'set the {full_name} A as {submodule.a_quantizer.bitwidth_list[idx-1]} bit')
+
+def load_quant_param_dict_(submodule, full_name, parent_module, quant_param_dict, model):
+    submodule.delta = quant_param_dict[full_name]['delta']
+    submodule.zero_point = quant_param_dict[full_name]['zero_point']
+
+    # reinit the rotation_matrix/channe_mask 
+    if hasattr(parent_module, 'channel_mask'):
+        parent_module.channel_mask = quant_param_dict[full_name]['channel_mask']
+        parent_module.update_quantized_weight_scaled()
+    if hasattr(parent_module, 'rotation_matrix'):
+        parent_module.get_rotation_matrix() 
+        parent_module.update_quantized_weight_rotated()
+
+    # update the quant_model.quant_param_dict also
+    model.quant_param_dict[full_name] = quant_param_dict[full_name]
+
+def save_quant_param_dict_(submodule, full_name, parent_module, model):
+
+    model.quant_param_dict[full_name] = {}
+    model.quant_param_dict[full_name]['delta'] = submodule.delta
+    model.quant_param_dict[full_name]['zero_point'] = submodule.zero_point
+
+    # parent module: the quant_layer
+    if hasattr(parent_module, 'channel_mask'):
+        model.quant_param_dict[full_name]['channel_mask'] = parent_module.channel_mask
+    if hasattr(parent_module, 'rotation_matrix'):
+        model.quant_param_dict[full_name]['rotation_matrix'] = None   # skip saving, since rotation_matrix are large and same across layers
+
+def set_init_done_(submodule):
+    submodule.init_done = True
+
+'''
+IMPORTANT: this file is simply a template, you should inherit the model you are using
+and implement these functions. 
+ref the examples in `examples/dit/models/quant_dit.py`
+'''
 class QuantModel(nn.Module):
     """
     the base quant model.
@@ -58,9 +152,20 @@ class QuantModel(nn.Module):
         apply_func_to_submodules(self, 
                 class_type=BaseQuantizer,
                 function=set_init_done_,)
+    
+    def bitwidth_refactor(self):
+        apply_func_to_submodules(self,
+                class_type=QuantizedLinear,
+                function=bitwidth_refactor_,
+                name=None,
+                parent_module=None,
+                quant_config=self.quant_config,
+                full_name=None
+                )
 
     def forward(self, x, *args, **kwargs):
         raise NotImplementedError("should be implemented in subclass.")
 
 if __name__ == '__main__':
     # TODO: 
+    pass

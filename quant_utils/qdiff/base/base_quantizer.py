@@ -16,12 +16,12 @@ class BaseQuantizer(nn.Module):
         
         # unpack the quant configurations
         self.n_bits = quant_config['n_bits']
-        self.group = quant_config['group']
+        # self.group = quant_config['group']
         self.sym = quant_config.get('sym', False)
 
         if isinstance(self.n_bits, list):
             raise AssertionError("when multiple n_bits are adopted, use the MixedPrecisionBaseQuantizer")
-        assert self.group in ['token','tensor','channel']
+        # assert self.group in ['token','tensor','channel']
         
         self.register_buffer('delta', None)
         self.register_buffer('zero_point', None)
@@ -141,4 +141,33 @@ class DynamicQuantizer(BaseQuantizer):
     def forward(self, x: torch.Tensor):
         x_quant = self.quantize(x)
         x_dequant = (x_quant + self.zero_point) * self.delta
+        return x_dequant
+    
+    def forward_with_quant_params(self, x, delta, mixed_precision=None):
+        # INFO: used for attn block-wise quant, with precomputed delta
+        # take in the x and delta with the same shape
+        assert self.sym
+        try:
+            assert x.min()>=0 and x.max()<=1   # attn_map: the input is within [0,1] attn_map«
+        except:
+            import ipdb; ipdb.set_trace()
+        
+        if mixed_precision is not None:
+            self.n_levels = torch.power(2,mixed_precision-1) - 1  # 8bit: -> 127
+        
+        delta = delta / (self.n_levels*2-1)  # 127*2-1=255
+        
+        # INFO: check abnormally small delta_
+        eps = 1.e-6
+        try:
+            assert torch.all(delta.abs() > eps)
+        except:
+            # import ipdb; ipdb.set_trace()  
+            # safe to set it is eps.
+            delta[delta < eps] = eps
+            # logger.info("unexpected small delta: {:.3f} exists in attn_map, set as eps".format(delta.abs().min()))
+        
+        x_int = torch.round(x / delta)
+        x_quant = torch.clamp(x_int, 0, self.n_levels*2-1)
+        x_dequant = (x_quant) * delta
         return x_dequant
