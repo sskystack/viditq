@@ -5,7 +5,10 @@ from qdiff.base.base_quantizer import BaseQuantizer, StaticQuantizer, DynamicQua
 from qdiff.base.quant_layer import QuantizedLinear
 from qdiff.utils import apply_func_to_submodules
 
-def quant_layer_refactor_(submodule,name,parent_module,quant_config,full_name):
+import logging
+logger = logging.getLogger(__name__)
+
+def quant_layer_refactor_(submodule,name,parent_module,quant_config,full_name,remain_fp_regex):
 
     quant_layer_type = QuantizedLinear
     '''
@@ -33,8 +36,14 @@ def quant_layer_refactor_(submodule,name,parent_module,quant_config,full_name):
             quant_layer_type = QuarotQuantizedLinear
             logger.info('setting quarot for layer {}'.format(full_name))
 
-    if 't_embedder' in full_name or 'adaLN_modulation' in full_name or 'final_layer' in full_name:
-        return # skip quantizing these layers
+    # set some layers as FP (fixed), feed in from config
+    if remain_fp_regex is not None:
+        import re
+        pattern = re.compile(remain_fp_regex)
+        if pattern.search(full_name):
+            logger.info(f"remain {full_name} quant as FP due to fp_regex")
+            return
+
     in_features=submodule.in_features
     out_features=submodule.out_features
     bias  = True if submodule.bias is not None else False

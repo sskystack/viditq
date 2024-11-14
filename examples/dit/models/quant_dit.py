@@ -224,13 +224,14 @@ class QuantDiT(DiT):
         self.quant_layer_refactor()
 
     def quant_layer_refactor(self):
-        apply_func_to_submodules(self, 
+        apply_func_to_submodules(self,
                 class_type=nn.Linear,
                 function=quant_layer_refactor_,
                 name=None,
                 parent_module=None,
                 quant_config=self.quant_config,
-                full_name=None
+                full_name=None,
+                remain_fp_regex=self.quant_config.remain_fp_regex,
                 )
 
     def save_quant_param_dict(self):
@@ -239,7 +240,7 @@ class QuantDiT(DiT):
                 function=save_quant_param_dict_,
                 full_name=None,
                 parent_module=None,
-                model=self
+                model=self,
                 )
 
     def load_quant_param_dict(self, quant_param_dict):

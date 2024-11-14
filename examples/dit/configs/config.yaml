@@ -3,6 +3,7 @@ model:
     model_type: 'opensora'  # ['sd','sdxl']
 calib_data:
     save_path: './calib_data.pth'
+remain_fp_regex: "t_embedder|adaLN_modulation|final_layer"  
 weight:
   n_bits: 8
   group: 'tensor'
