@@ -1,9 +1,14 @@
 model:
-    model_id: "pixart_sigma"
-remain_fp_regex: "adaln_single|caption_projection|proj_out"
+  model_id: pixart_sigma
+remain_fp_regex: adaln_single|caption_projection|proj_out
+calib_data:
+  save_path: ./calib_data.pth
+viditq:
+  alpha: 0.30000000000000004
+  layer_name_regex: blocks.26.ff.net|blocks.26.ff.net
 weight:
-    n_bits: 8
-    sym: False
+  n_bits: 4
+  sym: false
 act:
-    n_bits: 8
-    sym: True
+  n_bits: 8
+  sym: true

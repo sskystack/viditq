@@ -5,6 +5,10 @@ from qdiff.base.base_quantizer import BaseQuantizer, StaticQuantizer, DynamicQua
 from qdiff.base.quant_layer import QuantizedLinear
 from qdiff.utils import apply_func_to_submodules
 
+from qdiff.smooth_quant.sq_quant_layer import SQQuantizedLinear
+from qdiff.quarot.quarot_quant_layer import QuarotQuantizedLinear
+from qdiff.viditq.viditq_quant_layer import ViDiTQuantizedLinear
+
 import logging
 logger = logging.getLogger(__name__)
 
@@ -35,6 +39,19 @@ def quant_layer_refactor_(submodule,name,parent_module,quant_config,full_name,re
         if match:
             quant_layer_type = QuarotQuantizedLinear
             logger.info('setting quarot for layer {}'.format(full_name))
+    '''
+    METHOD: viditq - quarot + smooth_quant (both used)
+    '''
+    if quant_config.get("viditq",None) is not None:
+        from qdiff.viditq.viditq_quant_layer import ViDiTQuantizedLinear
+        
+        import re
+        layer_regex = quant_config.viditq.layer_name_regex
+        match = re.search(re.compile(layer_regex), full_name)
+        if match:
+            quant_layer_type = ViDiTQuantizedLinear
+            logger.info('setting viditq for layer {}'.format(full_name))
+        
 
     # set some layers as FP (fixed), feed in from config
     if remain_fp_regex is not None:
@@ -91,13 +108,20 @@ def load_quant_param_dict_(submodule, full_name, parent_module, quant_param_dict
     submodule.zero_point = quant_param_dict[full_name]['zero_point']
 
     # reinit the rotation_matrix/channe_mask 
-    if hasattr(parent_module, 'channel_mask'):
+    if hasattr(parent_module, 'channel_mask') and hasattr(parent_module, 'rotation_matrix'): # viditq 
+        assert isinstance(parent_module, ViDiTQuantizedLinear)
+        parent_module.get_rotation_matrix()     
+        parent_module.channel_mask = quant_param_dict[full_name]['channel_mask']
+        parent_module.update_quantized_weight_rotated_and_scaled()
+    elif not hasattr(parent_module, 'channel_mask') and hasattr(parent_module, 'rotation_matrix'):  # quarot
+        assert isinstance(parent_module, QuarotQuantizedLinear)
+        parent_module.get_rotation_matrix()   
+        parent_module.update_quantized_weight_rotated()
+    elif hasattr(parent_module, 'channel_mask') and not hasattr(parent_module, 'rotation_matrix'):  # smooth_quant
+        assert isinstance(parent_module, SQQuantizedLinear)
         parent_module.channel_mask = quant_param_dict[full_name]['channel_mask']
         parent_module.update_quantized_weight_scaled()
-    if hasattr(parent_module, 'rotation_matrix'):
-        parent_module.get_rotation_matrix() 
-        parent_module.update_quantized_weight_rotated()
-
+        
     # update the quant_model.quant_param_dict also
     model.quant_param_dict[full_name] = quant_param_dict[full_name]
 

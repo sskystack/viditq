@@ -53,6 +53,8 @@ def main(args):
     model.load_quant_param_dict(quant_param_ckpt)
     model.set_init_done()
 
+    logger.info(str(model))
+
     # read the promts
     prompt_path = args.prompt if args.prompt is not None else "./prompts.txt"
     prompts = []
@@ -61,18 +63,22 @@ def main(args):
         for line in lines:
             prompts.append(line.strip())
 
-    for i, prompt in enumerate(prompts):
-        image = pipe(
-            prompt=prompt,
+    N_batch = len(prompts) // args.batch_size # drop_last
+    for i in range(N_batch):
+        images = pipe(
+            prompt=prompts[i*args.batch_size: (i+1)*args.batch_size],
             num_inference_steps=args.num_sampling_steps,
             generator=torch.Generator(device="cuda").manual_seed(args.seed),
-        ).images[0]
-        print(f"Export image to output_{i}.jpg")
+        ).images
+        print(f"Export image of batch {i}")
+
         save_path = os.path.join(args.log, "generated_images")
         if not os.path.exists(save_path):
             os.makedirs(save_path)
-        image.save(os.path.join(save_path, f"output_{i}.jpg"))
-
+            
+        for i_image in range(args.batch_size):
+            images[i_image].save(os.path.join(save_path, f"output_{i_image + args.batch_size*i}.jpg"))
+            
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--log", type=str)
@@ -82,6 +88,7 @@ if __name__ == "__main__":
     parser.add_argument("--num-sampling-steps", type=int, default=10)
     parser.add_argument("--prompt", type=str, default=None)
     parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--batch-size", type=int, default=4)
     parser.add_argument("--ckpt", type=str, default=None)
     args = parser.parse_args()
     main(args)

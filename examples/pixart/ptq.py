@@ -48,13 +48,31 @@ def main(args):
     print(quant_config)
     pipe.convert_quant(quant_config)
     model = pipe.transformer
-    
+
     '''
     INFO: The PTQ process:
     for simple PTQ with dynamic act quant: 
     the weight are quantized with quant_model initialization.
     the act quant params are calculated online. 
     '''
+    def init_sq_channel_mask_(module, full_name, calib_data):
+        assert isinstance(module, SQQuantizedLinear)
+        act_mask = calib_data[full_name].mean(dim=0)  # [T, C], averaged over all timesteps
+        module.get_channel_mask(act_mask)  # set self.channel_mask
+        module.update_quantized_weight_scaled()
+        
+    def init_rotation_matrix_(module, full_name):
+        from qdiff.quarot.quarot_utils import random_hadamard_matrix, matmul_hadU_cuda
+        assert isinstance(module, QuarotQuantizedLinear)
+        module.get_rotation_matrix()
+        module.update_quantized_weight_rotated()
+    
+    def init_rotation_and_channel_mask_(module, full_name, calib_data):
+        assert isinstance(module, ViDiTQuantizedLinear)
+        act_mask = calib_data[full_name].mean(dim=0)  # [T, C], averaged over all timesteps
+        module.get_channel_mask(act_mask)  # set self.channel_mask
+        module.get_rotation_matrix()
+        module.update_quantized_weight_rotated_and_scaled()
 
     '''
     INFO: the smooth_quant quantization.
@@ -62,13 +80,6 @@ def main(args):
     '''
     if quant_config.get("smooth_quant",None) is not None:
         # INFO: the SQQuantizedLayer are initialized with the quant_layer_refactor_ in quant_dit.py
-
-        def init_sq_channel_mask_(module, full_name, calib_data):
-            assert isinstance(module, SQQuantizedLinear)
-            act_mask = calib_data[full_name].mean(dim=0)  # [T, C], averaged over all timesteps
-            module.get_channel_mask(act_mask)  # set self.channel_mask
-            module.update_quantized_weight_scaled()
-
         from qdiff.smooth_quant.sq_quant_layer import SQQuantizedLinear
 
         assert quant_config.calib_data.save_path is not None
@@ -89,12 +100,7 @@ def main(args):
     init and apply the rotation matrix
     '''
     if quant_config.get("quarot",None) is not None:
-
-        def init_rotation_matrix_(module, full_name):
-            from qdiff.quarot.quarot_utils import random_hadamard_matrix, matmul_hadU_cuda
-            module.get_rotation_matrix()
-            module.update_quantized_weight_rotated()
-
+        
         from qdiff.quarot.quarot_quant_layer import QuarotQuantizedLinear
         # get the rotation matrix, iter through all layers
         kwargs = {}
@@ -104,7 +110,23 @@ def main(args):
                             full_name='',
                             **kwargs
                             )
-
+    '''
+    INFO: combining both
+    '''
+    if quant_config.get("viditq",None) is not None:
+        from qdiff.viditq.viditq_quant_layer import ViDiTQuantizedLinear
+        
+        assert quant_config.calib_data.save_path is not None
+        calib_data = torch.load(os.path.join(args.log, quant_config.calib_data.save_path), weights_only=True)  # default wtih 
+        kwargs = {}
+        apply_func_to_submodules(model,
+                            class_type=ViDiTQuantizedLinear,  # add hook to all objects of this cls
+                            function=init_rotation_and_channel_mask_,
+                            full_name='',
+                            calib_data = calib_data,
+                            **kwargs
+                            )
+        
     model.set_init_done()
     model.save_quant_param_dict()
     torch.save(pipe.transformer.quant_param_dict, os.path.join(args.log, 'quant_params.pth'))
