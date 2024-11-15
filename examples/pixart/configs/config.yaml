@@ -1,0 +1,9 @@
+model:
+    model_id: "pixart_sigma"
+remain_fp_regex: "adaln_single|caption_projection|proj_out"
+weight:
+    n_bits: 8
+    sym: False
+act:
+    n_bits: 8
+    sym: True

@@ -5,7 +5,7 @@ EXP_NAME="cuda_test"
 #EXP_NAME="mixed_precision_test"
 
 # quant infer command
-CUDA_VISIBLE_DEVICES=1 python quant_inference.py \
+CUDA_VISIBLE_DEVICES=0 python quant_inference.py \
     --image-size 256\
     --seed 1 \
     --ptq-config "./configs/${CFG_NAME}.yaml"\

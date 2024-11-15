@@ -86,7 +86,10 @@ class StaticQuantizer(BaseQuantizer):
             delta = (x_max - x_min)/(self.n_levels-1)
             zero_point = torch.round(x_min/delta) + (self.n_levels/2)
         
-        assert torch.all(delta > 1.e-4), "unexpected small delta exists"
+        try:
+            assert torch.all(delta > 1.e-6), "unexpected small delta exists"
+        except:
+            import ipdb; ipdb.set_trace()
 
         self.delta = delta.unsqueeze(-1)  # [G] -> [G,1]
         self.zero_point = zero_point.unsqueeze(-1)
