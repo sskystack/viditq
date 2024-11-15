@@ -6,6 +6,7 @@ import torch.nn.functional as F
 from typing import Union
 import time
 import math
+from omegaconf import ListConfig
 
 logger = logging.getLogger(__name__)
 
@@ -22,13 +23,17 @@ class BaseQuantizer(nn.Module):
         if isinstance(self.n_bits, list):
             raise AssertionError("when multiple n_bits are adopted, use the MixedPrecisionBaseQuantizer")
         # assert self.group in ['token','tensor','channel']
-        
+
         self.register_buffer('delta', None)
         self.register_buffer('zero_point', None)
 
-        self.n_levels = 2 ** self.n_bits if not self.sym else 2 ** (self.n_bits - 1) - 1
+        # INFO: for mixed_precision, the n_bits could be a ListConfig, and need to be initialized in subclass init
+        if not isinstance(self.n_bits, ListConfig):
+            self.n_levels = 2 ** self.n_bits if not self.sym else 2 ** (self.n_bits - 1) - 1
+
+
         self.init_done = False
-    
+
     def forward(self, x: torch.Tensor):
         raise NotImplementedError("should be implemented in subclass.")
     
@@ -124,7 +129,7 @@ class DynamicQuantizer(BaseQuantizer):
 
             delta = (x_max - x_min)/(self.n_levels-1)
             # INFO: check small values for delta, close to zero delta, would cause nan in zero_point
-            eps = 1.e-4
+            eps = 1.e-6
             try:
                 assert torch.all(delta.abs() > eps)
             except:

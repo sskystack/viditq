@@ -57,10 +57,10 @@ def main(args):
     '''
     def init_sq_channel_mask_(module, full_name, calib_data):
         assert isinstance(module, SQQuantizedLinear)
-        act_mask = calib_data[full_name].mean(dim=0)  # [T, C], averaged over all timesteps
+        act_mask = calib_data[full_name].max(dim=0)[0]  # [T, C], averaged over all timesteps
         module.get_channel_mask(act_mask)  # set self.channel_mask
         module.update_quantized_weight_scaled()
-        
+
     def init_rotation_matrix_(module, full_name):
         from qdiff.quarot.quarot_utils import random_hadamard_matrix, matmul_hadU_cuda
         assert isinstance(module, QuarotQuantizedLinear)
@@ -69,7 +69,7 @@ def main(args):
     
     def init_rotation_and_channel_mask_(module, full_name, calib_data):
         assert isinstance(module, ViDiTQuantizedLinear)
-        act_mask = calib_data[full_name].mean(dim=0)  # [T, C], averaged over all timesteps
+        act_mask = calib_data[full_name].max(dim=0)[0]  # [T, C], averaged over all timesteps
         module.get_channel_mask(act_mask)  # set self.channel_mask
         module.get_rotation_matrix()
         module.update_quantized_weight_rotated_and_scaled()

@@ -8,9 +8,11 @@ import time
 import math
 from omegaconf import ListConfig
 
+from qdiff.base.base_quantizer import BaseQuantizer
+
 logger = logging.getLogger(__name__)
 
-class MixedPrecisionBaseQuantizer(nn.Module):
+class MixedPrecisionBaseQuantizer(BaseQuantizer):
     """
     The quantizer supporting multiple bit-width configuration.
     the self.n_bits is a list: e.g., [2,4,8], indexed by `i_bitwidth`
@@ -19,7 +21,7 @@ class MixedPrecisionBaseQuantizer(nn.Module):
     """
 
     def __init__(self, quant_config):
-        super(MixedPrecisionBaseQuantizer, self).__init__()
+        super(MixedPrecisionBaseQuantizer, self).__init__(quant_config)
 
         assert isinstance(quant_config['n_bits'], ListConfig)
         assert quant_config.get('i_bitwidth',None) is not None
@@ -27,9 +29,9 @@ class MixedPrecisionBaseQuantizer(nn.Module):
         self.bitwidth_list = quant_config['n_bits']
         self.i_bitwidth = quant_config['i_bitwidth']
         self.n_bits = self.bitwidth_list[self.i_bitwidth]
-        self.group = quant_config['group']
+        # self.group = quant_config['group']
         self.sym = quant_config.get('sym', False)
-        assert self.group in ['token','tensor','channel']
+        # assert self.group in ['token','tensor','channel']
 
         self.register_buffer('delta_list', None)
         self.register_buffer('zero_point_list', None)
@@ -135,6 +137,8 @@ class MixedPrecisionDynamicQuantizer(MixedPrecisionBaseQuantizer):
          # get the quant_params online
         assert len(x.shape) == 2  # [N_group, -1]
 
+        self.n_levels = 2 ** self.n_bits if not self.sym else 2 ** (self.n_bits - 1) - 1  # update the n_levels
+
         if self.sym:
             x_absmax = x.abs().max(dim=1)[0]
             self.x_absmax = x_absmax
@@ -152,7 +156,7 @@ class MixedPrecisionDynamicQuantizer(MixedPrecisionBaseQuantizer):
 
             delta = (x_max - x_min)/(self.n_levels-1)
             # INFO: check small values for delta, close to zero delta, would cause nan in zero_point
-            eps = 1.e-4
+            eps = 1.e-6
             try:
                 assert torch.all(delta.abs() > eps)
             except:
