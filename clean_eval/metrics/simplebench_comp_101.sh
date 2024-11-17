@@ -1,55 +1,71 @@
-dir_videos="/home/zhuhongyu/diffuser-dev/examples/opensora1.2/samples/samples"
-#dir_prompts="/share/public/video_quant/wanrui/datasets/ucf101/videos/prompt_ucf.txt"       #for latte only
-dir_prompts="/home/zhuhongyu/diffuser-dev/examples/opensora1.2/ucf_long_100_copy.txt"   #for stdit
-dir_results="/home/zhuhongyu/diffuser-dev/examples/opensora1.2"
-dir_save=$(dirname $dir_videos)
-dir_ref_vid_simple="/share/public/video_quant/wanrui/datasets/ucf101/videos/selected/test_zhuhongyu"                 #fvd_ucf101
-dir_ref_vid_fp_latte="/mnt/public/video_quant/wanrui/alt/diffuser-dev/logs/latte/debug_timestep/generated_videos"    #fvd_fp16
-dir_ref_vid_fp_stdit="/share/public/video_quant/wanrui/diffuser-dev/logs/opensora/test_zhuhongyu"
+# --- Speqcify the generated images for testing ---
+dir_videos="/mnt/public/diffusion_quant/zhaotianchen/project/viditq/clean/examples/cogvideo_attn/logs/test/generated_videos"
+# INFO: drop the last part of the path of dir_videos (namely the `genratetd_videos`, 
+# because geanerating metric.log in `generated_videos` folder would cause trouble when evaluating some other metrics)
+dir_save=$(dirname $dir_videos)    
 
-#EC_path="/share/public/video_quant/wanrui/metrics/I2VBench"
-SIMP_path="/home/zhuhongyu/clean_eval/metrics"
-CUDA_DEVICES="3"
+# --- Spcify the prompts used for generation (to measure text-video alignment) ---
+#dir_prompts="/home/zhuhongyu/diffuser-dev/examples/opensora1.2/ucf_long_100_copy.txt"   #for stdit
+dir_prompts="/mnt/public/diffusion_quant/zhaotianchen/project/viditq/clean/examples/cogvideo_attn/prompts.txt"   #for cogvideo
 
+# --- Specify the FP generated / groun-truth reference videos (for FVD and FVD-FP16 computation) ---
+#dir_ref_vid_ucf="/share/public/video_quant/wanrui/datasets/ucf101/videos/"                 #fvd_ucf101
+dir_ref_vid_fp="/mnt/public/diffusion_quant/zhaotianchen/project/viditq/clean/examples/cogvideo_attn/logs/fp16/generated_videos"		  #fvd_fp16
+
+# --- Specify the eval project root path ---
+root_path="./"
+
+# --- Specify the eval log path ---
+dir_results="./logs"
 current_time=$(date +"%Y-%m-%d_%H-%M-%S")
-dir_results="${dir_results}/${current_time}"
-rm $dir_save/metrics.log
-rm $dir_videos/metrics.log
+dir_results=$dir_results/$current_time
 mkdir -p "$dir_results"
 
-# FVD
-cd $SIMP_path
+# --- Specify the GPU to run ----
+GPU_ID=3
 
-#fvd_ucf for latte
-#CUDA_VISIBLE_DEVICES='2' python3 fvd.py --dir_videos $dir_videos --dir_results $dir_results --dir_ref_vid $dir_ref_vid_simple --mode "simp_ucf" >> $dir_save/metrics.log  2>&1
-#fvd_ucf for stdit
-CUDA_VISIBLE_DEVICES='3' python3 fvd.py --dir_videos $dir_videos --dir_results $dir_results --dir_ref_vid $dir_ref_vid_simple/0 --mode "simp_ucf" >> $dir_save/metrics.log  2>&1
+# --- clean the (possibly) existing eval results ---
+if [ -f "$dir_save/metrics.log" ]; then
+	echo "removing existing metrics.log"
+    rm $dir_save/metrics.log
+fi
 
-#fvd_fp16 for latte
-#CUDA_VISIBLE_DEVICES='2' python3 fvd.py --dir_videos $dir_videos --dir_results $dir_results --dir_ref_vid $dir_ref_vid_fp_latte --mode "fpfvd" >> $dir_save/metrics.log  2>&1
-#fvd_fp16 for stdit
-rm $dir_ref_vid_fp_stdit/metrics.log
-CUDA_VISIBLE_DEVICES='3' python3 fvd.py --dir_videos $dir_videos --dir_results $dir_results --dir_ref_vid $dir_ref_vid_fp_stdit --mode "fpfvd" >> $dir_save/metrics.log  2>&1
+# -----------------  Main Evaluation -----------------------
+echo "Please be noted that when certain metric measurement raises error, they will not appear in final in the terminal, plz ref to the metrics.log for error information. "
 
-# Clip-temp & Clip-sim
-CUDA_VISIBLE_DEVICES=$CUDA_DEVICES python3 clip_score.py --dir_videos $dir_videos --dir_prompts $dir_prompts --dir_results $dir_results --metric 'clip_temp_score' >> $dir_save/metrics.log  2>&1
-CUDA_VISIBLE_DEVICES=$CUDA_DEVICES python3 clip_score.py --dir_videos $dir_videos --dir_prompts $dir_prompts --dir_results $dir_results --metric 'clip_score' >> $dir_save/metrics.log  2>&1
+# ----------------- FVD -----------------------
+# DEBUG: not tested and used yet, reruiqres generating 101 videos
+#echo " --------- Evaluating the FVD with UCF-101 Features... ----------"
+#cd $root_path  # shift to the main directory
+#CUDA_VISIBLE_DEVICES=$GPU_ID python3 fvd.py --dir_videos $dir_videos --dir_results $dir_results --dir_ref_vid $dir_ref_vid_ucf --mode "simp_ucf" 2>&1 | tee -a $dir_save/metrics.log
 
-# VQA_A and VQA_T(VQ) $$$
-CUDA_VISIBLE_DEVICES=$CUDA_DEVICES python3 evaluate_a_set_of_videos.py --dir_videos $dir_videos --dir_results $dir_results >> $dir_save/metrics.log  2>&1
-CUDA_VISIBLE_DEVICES=$CUDA_DEVICES python3 evaluate_a_set_of_videos.py --dir_videos $dir_videos --dir_results $dir_results
+echo " ---------- Evaluating the FVD with FP16 generated videos... ------------"
+CUDA_VISIBLE_DEVICES=$GPU_ID python3 fvd.py --dir_videos $dir_videos --dir_results $dir_results --dir_ref_vid $dir_ref_vid_fp --mode "fpfvd" 2>&1 | tee -a $dir_save/metrics.log
 
-# Flow-Score (TC)
-CUDA_VISIBLE_DEVICES=$CUDA_DEVICES python3 optical_flow_scores.py --dir_videos $dir_videos --metric 'flow_score' --dir_results $dir_results >> $dir_save/metrics.log  2>&1
+# ----------------- CLIPSIM & CLIP-Temp -----------------------
+echo "--------- Evaluating the CLIPSIM/CLIPTemp... ---------------"
+CUDA_VISIBLE_DEVICES=$GPU_ID python3 clip_score.py --dir_videos $dir_videos --dir_prompts $dir_prompts --dir_results $dir_results --metric 'clip_temp_score' 2>&1 | tee -a $dir_save/metrics.log
+CUDA_VISIBLE_DEVICES=$GPU_ID python3 clip_score.py --dir_videos $dir_videos --dir_prompts $dir_prompts --dir_results $dir_results --metric 'clip_score' 2>&1 |  tee -a  $dir_save/metrics.log
 
-# IS(VQ)
-#cd $EC_path
-#cd ./metrics
-#CUDA_VISIBLE_DEVICES=$CUDA_DEVICES python3 is.py --dir_videos $dir_videos --dir_results $dir_results >> $dir_save/metrics.log  2>&1
+# ----------------- VQA -----------------------
+echo "--------- Evaluating the VQA... -------------"
+CUDA_VISIBLE_DEVICES=$GPU_ID python3 evaluate_a_set_of_videos.py --dir_videos $dir_videos --dir_results $dir_results 2>&1 | tee -a  $dir_save/metrics.log
 
-# temporal flickering(TC)
-CUDA_VISIBLE_DEVICES=$CUDA_DEVICES python3 temporal_flickering.py --dir_videos $dir_videos >> $dir_save/metrics.log  2>&1
+# ----------------- Flow Score -----------------------
+echo "----------- Evaluating the Flow Score... -----------"
+cd ./RAFT
+CUDA_VISIBLE_DEVICES=$GPU_ID python3 optical_flow_scores.py --dir_videos $dir_ref_vid_fp --metric 'flow_score' --dir_results ../$dir_results 2>&1 | tee -a $dir_save/metrics.log  # dir_results need to be reverted outside ./RAFT
+CUDA_VISIBLE_DEVICES=$GPU_ID python3 optical_flow_scores.py --dir_videos $dir_videos --metric 'flow_score' --dir_results ../$dir_results 2>&1 | tee -a $dir_save/metrics.log  # dir_results need to be reverted outside ./RAFT
+cd ../
 
-# Dump cleaned output
-CUDA_VISIBLE_DEVICES=$CUDA_DEVICES python read_metric_log.py  $dir_save/metrics.log >> $dir_videos/metrics.log 2>&1
+# ----------------- Temporal Flickering -----------------------
+echo "----------- Evaluating the Temporal Flickering... -----------"
+CUDA_VISIBLE_DEVICES=$GPU_ID python3 temporal_flickering.py --dir_videos $dir_videos  2>&1 | tee -a $dir_save/metrics.log
+
+## Dump cleaned output
+echo "------------------------------------------"
+echo "------------ Final Results: ---------------"
+
 CUDA_VISIBLE_DEVICES=$CUDA_DEVICES python read_metric_log.py  $dir_save/metrics.log
+echo "------------------------------------------"
+
