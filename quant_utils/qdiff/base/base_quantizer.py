@@ -155,16 +155,19 @@ class DynamicQuantizer(BaseQuantizer):
         # INFO: used for attn block-wise quant, with precomputed delta
         # take in the x and delta with the same shape
         assert self.sym
-        try:
-            assert x.min()>=0 and x.max()<=1   # attn_map: the input is within [0,1] attn_map«
-        except:
-            import ipdb; ipdb.set_trace()
-        
+
+        # INFO: meant to check attn_map only, but we use this for qk quant pre_softmax also 
+        # try:
+            # assert x.min()>=0 and x.max()<=1   # attn_map: the input is within [0,1] attn_map«
+        # except:
+            # import ipdb; ipdb.set_trace()
+
         if mixed_precision is not None:
-            self.n_levels = torch.power(2,mixed_precision-1) - 1  # 8bit: -> 127
-        
-        delta = delta / (self.n_levels*2-1)  # 127*2-1=255
-        
+            n_levels = torch.pow(2,mixed_precision) -  1 # 8bit: -> 255
+            # aditional handling of 0-bit, since divide by 0 cause na
+            zero_bit_mask = (n_levels != 0).int()
+            n_levels[n_levels == 0] = 255  # temporarily set as 8-bit, masked anyway
+
         # INFO: check abnormally small delta_
         eps = 1.e-6
         try:
@@ -174,8 +177,20 @@ class DynamicQuantizer(BaseQuantizer):
             # safe to set it is eps.
             delta[delta < eps] = eps
             # logger.info("unexpected small delta: {:.3f} exists in attn_map, set as eps".format(delta.abs().min()))
-        
-        x_int = torch.round(x / delta)
-        x_quant = torch.clamp(x_int, 0, self.n_levels*2-1)
+
+        if mixed_precision is not None:
+            delta = delta / n_levels
+            x_int = torch.round(x / delta)
+            # INFO: the torch.clamp takes single max value, but we want the same shape as x
+            x_quant = torch.where(x_int>n_levels, n_levels, x_int)
+        else:
+            delta = delta/ (self.n_levels*2+1)
+            x_int = torch.round(x / delta)
+            x_quant = torch.clamp(x_int, 0, self.n_levels*2+1)
+
         x_dequant = (x_quant) * delta
+
+        if mixed_precision is not None:  # apply the mask of elements of 0-bit
+            x_dequant = x_dequant*zero_bit_mask
+
         return x_dequant

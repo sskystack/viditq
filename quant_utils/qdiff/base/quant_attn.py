@@ -19,7 +19,7 @@ class QuantizedAttentionMap(torch.nn.Module):
         self.group = self.quant_config.attn.attn_map.group  # [column, block]
         self.attn_map_quantizer = DynamicQuantizer(quant_config['attn']['attn_map'])
         reorder_file = self.quant_config.attn.qk.reorder_file_path
-        self.optimal_reorder = torch.load(reorder_file, weights_only=True)
+        self.optimal_reorder = torch.load(reorder_file, weights_only=True, map_location='cuda')
         if self.quant_config.attn.attn_map.get('int8_scale', False):
             dummy_int8_quant_config = OmegaConf.create({
                 'n_bits': 8,
@@ -43,6 +43,7 @@ class QuantizedAttentionMap(torch.nn.Module):
         else:
             BS, head_per_split_num, N_token, N_token = x.shape
             device = x.device
+            dtype = x.dtype
             if self.group == 'column':
                 x = x.permute([0,1,3,2]).reshape([-1, N_token])    # a row shares same quant_params
                 x_quant = self.attn_map_quantizer(x).reshape([BS, head_per_split_num, N_token, N_token]).permute([0,1,3,2])
@@ -61,9 +62,9 @@ class QuantizedAttentionMap(torch.nn.Module):
                 
                 # generate quant_params, parallel quant forward
                 # 1. get block-wise max for each head
-                delta = torch.zeros([BS,N_head,N_image_token,N_image_token], device=device)
+                delta = torch.zeros([BS,N_head,N_image_token,N_image_token], device=device, dtype=dtype)
                 if self.mixed_precision_cfg is not None:
-                    mixed_precision = torch.zeros([BS,N_head,N_image_token,N_image_token], device=device)
+                    mixed_precision = torch.zeros([BS,N_head,N_image_token,N_image_token], device=device, dtype=dtype)
                 for i_bs in range(BS):  # bs=2
                     for i_head in range(N_head):  # N_head=48
                         i_order = self.optimal_reorder['permute_order_index'][self.i_block][i_head]
@@ -83,7 +84,7 @@ class QuantizedAttentionMap(torch.nn.Module):
                         # INFO: get the int8: delta_int8 = quant(delta)
                         if self.quant_config.attn.attn_map.get('int8_scale', False):
                             delta_before_quant = delta_.clone()
-                            delta_max = torch.zeros_like(delta_).fill_(delta_.max())
+                            delta_max = torch.zeros_like(delta_, dtype=dtype).fill_(delta_.max())
                             delta_ = self.attn_map_scale_quantizer.forward_with_quant_params(
                                 delta_,
                                 delta_max
@@ -92,7 +93,7 @@ class QuantizedAttentionMap(torch.nn.Module):
                         
                         if self.mixed_precision_cfg is not None:
                             assert self.quant_config.attn.attn_map.level_2, "mixed precision cfg file is associated with level-2 fine-grained block currently."
-                            mixed_precision_ = self.mixed_precision_cfg[self.i_block,self.split_range,:]
+                            mixed_precision_ = self.mixed_precision_cfg[self.i_block][i_head].to(dtype)
                             assert mixed_precision_.shape == delta_.shape
                             mixed_precision_ = mixed_precision_.reshape([num_block_per_dim, num_block_per_dim,1,1]).repeat(1,1,block_width_per_dim,block_width_per_dim)
                             mixed_precision_ = mixed_precision_.permute([0,2,1,3]).reshape([N_image_token, N_image_token])
