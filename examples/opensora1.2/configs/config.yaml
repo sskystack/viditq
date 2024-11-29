@@ -5,8 +5,10 @@ calib_data:
 weight:
   n_bits: 8
   group: 'tensor'
-  sym: False
+  sym: True
 act:
   n_bits: 8
-  group: 'tensor'
-  sym: False
+  group: 'token' # DIRTY: it is not used, forced as "token-wise"
+  sym: True
+remain_fp_regex: embedder|adaLN_modulation|t_block
+

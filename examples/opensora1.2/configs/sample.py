@@ -1,12 +1,12 @@
-resolution = "240p"
+resolution = "144p"
 aspect_ratio = "9:16"
-num_frames = 51
+num_frames = 64
 fps = 24
 frame_interval = 1
 save_fps = 24
 ptq_config='./configs/config.yaml'
-save_dir = "./samples/samples/"
-seed = 42
+save_dir = "./logs/int8_linear"
+seed = 1024
 batch_size = 1
 multi_resolution = "STDiT2"
 dtype = "bf16"
@@ -15,14 +15,16 @@ align = 5
 
 model = dict(
     type="STDiT3-XL/2",
-    from_pretrained="/share/public/zhuhongyu/hpcai-tech/OpenSora-STDiT-v3",
+    # from_pretrained="/share/public/zhuhongyu/hpcai-tech/OpenSora-STDiT-v3",
+    from_pretrained="/home/zhaotianchen/models/hpcai-tech/OpenSora-STDiT-v3",
     qk_norm=True,
     enable_flash_attn=True,
-    enable_layernorm_kernel=True,
+    enable_layernorm_kernel=False,  # didnot install apex
 )
 vae = dict(
     type="OpenSoraVAE_V1_2",
-    from_pretrained="/share/public/zhuhongyu/hpcai-tech/OpenSora-VAE-v1.2",
+    # from_pretrained="/share/public/zhuhongyu/hpcai-tech/OpenSora-VAE-v1.2",
+    from_pretrained="/home/zhaotianchen/models/hpcai-tech/OpenSora-VAE-v1.2",
     micro_frame_size=17,
     micro_batch_size=4,
 )
@@ -40,3 +42,6 @@ scheduler = dict(
 
 aes = 6.5
 flow = None
+
+precompute_text_embeds = True
+model_path="/home/zhaotianchen/models"

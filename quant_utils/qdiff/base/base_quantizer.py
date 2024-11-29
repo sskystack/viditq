@@ -50,7 +50,7 @@ class StaticQuantizer(BaseQuantizer):
         super().__init__(quant_config)
 
         if self.sym:
-            self.abs_max = None
+            self.x_absmax = None
         else:
             self.x_max = None
             self.x_min = None
