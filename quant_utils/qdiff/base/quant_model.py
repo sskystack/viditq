@@ -102,6 +102,37 @@ def bitwidth_refactor_(submodule, name, parent_module, quant_config, full_name):
                 else:
                     submodule.a_quantizer.bitwidth_refactor(idx-1)
                     logger.info(f'[Mixed Precision] set the {full_name} A as {submodule.a_quantizer.bitwidth_list[idx-1]} bit')
+                    
+def bitwidth_refactor_(submodule, name, parent_module, quant_config, full_name):
+    import re
+    layer_regex_list_w = quant_config.mixed_precision.weight.layer_name_regex
+    layer_regex_list_a = quant_config.mixed_precision.act.layer_name_regex
+
+    for idx, layer_regex in enumerate(layer_regex_list_w):
+        if len(layer_regex) == 0: # 0 being empty, skip
+            continue
+        else:
+            match = re.search(re.compile(layer_regex), full_name)
+            if match:
+                if idx == 0: # the FP16
+                    submodule.quant_mode = False
+                    logger.info(f'[Mixed Precision] set the {full_name} W as FP16')
+                else:
+                    submodule.w_quantizer.bitwidth_refactor(idx-1)
+                    logger.info(f'[Mixed Precision] set the {full_name} W as {submodule.w_quantizer.bitwidth_list[idx-1]} bit')
+
+    for idx, layer_regex in enumerate(layer_regex_list_a):
+        if len(layer_regex) == 0: # 0 being empty, skip
+            continue
+        else:
+            match = re.search(re.compile(layer_regex), full_name)
+            if match:
+                if idx == 0: # the FP16
+                    submodule.quant_mode = False
+                    logger.info(f'[Mixed Precision] set the {full_name} A as FP16')
+                else:
+                    submodule.a_quantizer.bitwidth_refactor(idx-1)
+                    logger.info(f'[Mixed Precision] set the {full_name} A as {submodule.a_quantizer.bitwidth_list[idx-1]} bit')
 
 def load_quant_param_dict_(submodule, full_name, parent_module, quant_param_dict, model):
     submodule.delta = quant_param_dict[full_name]['delta']

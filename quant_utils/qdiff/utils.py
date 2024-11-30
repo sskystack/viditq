@@ -28,6 +28,7 @@ def apply_func_to_submodules(module, class_type, function, parent_name="", retur
         full_name = f"{parent_name}.{name}" if parent_name else name
         parent_module = module
 
+        # INFO: pass from the parent call into func
         if 'name' in kwargs:
             kwargs['name']=name
         if 'full_name' in kwargs:
