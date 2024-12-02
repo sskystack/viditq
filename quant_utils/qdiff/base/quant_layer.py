@@ -24,20 +24,32 @@ class QuantizedLinear(torch.nn.Linear):
 
         self.fp_module = fp_module
         self.q_cfg = quant_config
-        if isinstance(quant_config.weight.n_bits, ListConfig):  # mixed precision
-            self.w_quantizer = MixedPrecisionStaticQuantizer(quant_config['weight'])
-        else:
-            self.w_quantizer = StaticQuantizer(quant_config['weight'])
-        if isinstance(quant_config.act.n_bits, ListConfig):
-            self.a_quantizer = MixedPrecisionDynamicQuantizer(quant_config['act'])
-        else:
-            self.a_quantizer = DynamicQuantizer(quant_config['act'])
 
-        # quantize the weight from FP module, bias remain as FP16
-        self.weight.data = self.w_quantizer(fp_module.weight)  # [C_out, C_in]
-        self.bias = fp_module.bias
+        # set default as None, to skip quant some part
+        self.w_quantizer = None
+        self.a_quantizer = None
+
+        if quant_config.get('weight', None) is not None:
+            if isinstance(quant_config.weight.n_bits, ListConfig):  # mixed precision
+                self.w_quantizer = MixedPrecisionStaticQuantizer(quant_config['weight'])
+            else:
+                self.w_quantizer = StaticQuantizer(quant_config['weight'])
+
+            # INFO: the weights are initialized.
+            # quantize the weight from FP module, bias remain as FP16
+            self.weight.data = self.w_quantizer(fp_module.weight)  # [C_out, C_in]
+            self.w_quantizer.init_done = True
+        else:
+            self.weight.data = fp_module.weight
+
         self.fp_weight = self.fp_module.weight
-        self.w_quantizer.init_done = True
+        self.bias = fp_module.bias
+
+        if quant_config.get('act', None) is not None:
+            if isinstance(quant_config.act.n_bits, ListConfig):
+                self.a_quantizer = MixedPrecisionDynamicQuantizer(quant_config['act'])
+            else:
+                self.a_quantizer = DynamicQuantizer(quant_config['act'])
 
         self.use_kernel = False  # whether use the cuda kernel for actual saving
         self.quant_mode = True   # when set as False, use the original model forward
@@ -54,7 +66,8 @@ class QuantizedLinear(torch.nn.Linear):
             x = x.reshape([B*N_token,-1])
 
             # quantize activation
-            x = self.a_quantizer(x)
+            if self.a_quantizer is not None:
+                x = self.a_quantizer(x)
             x = x.reshape([B, N_token, C])
 
             # forward with dequantized weight and activation

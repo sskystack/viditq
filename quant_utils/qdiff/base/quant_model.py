@@ -69,8 +69,10 @@ def quant_layer_refactor_(submodule,name,parent_module,quant_config,full_name,re
 
     # set the module_name for quant_layer and quantizers
     setattr(getattr(parent_module, name), 'module_name', full_name)
-    setattr(getattr(parent_module, name).w_quantizer, 'module_name', full_name)
-    setattr(getattr(parent_module, name).a_quantizer, 'module_name', full_name)
+    if getattr(parent_module, name).w_quantizer is not None:
+        setattr(getattr(parent_module, name).w_quantizer, 'module_name', full_name)
+    if getattr(parent_module, name).a_quantizer is not None:
+        setattr(getattr(parent_module, name).a_quantizer, 'module_name', full_name)
 
 def bitwidth_refactor_(submodule, name, parent_module, quant_config, full_name):
     import re

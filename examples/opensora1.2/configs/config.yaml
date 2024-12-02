@@ -4,13 +4,13 @@ model:
 remain_fp_regex: embedder|adaLN_modulation|t_block
 calib_data:
 weight:
-  n_bits: 8
-  group: 'tensor'
-  sym: True
+    n_bits: 8
+    group: 'tensor'
+    sym: True
 act:
-  n_bits: 8
-  group: 'token' # DIRTY: it is not used, forced as "token-wise"
-  sym: True
+    n_bits: 8
+    group: 'token' # DIRTY: it is not used, forced as "token-wise"
+    sym: True
 attn:
     qk:
         n_bits: 8
@@ -21,9 +21,6 @@ attn:
         n_bits: 8
         sym: True
         group: 'row'
-        # level_2: True
-        # int8_scale: False
-        # mixed_precision_cfg_path: './visualization/attn_map_mixed_precision.pt'
 cross_attn:
     q:
       n_bits: 8

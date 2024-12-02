@@ -47,30 +47,32 @@ class QuantOpenSora(STDiT3):
         self.quant_layer_refactor()
     
     def quant_layer_refactor(self):
-        if self.quant_config.get('attn', False):
-            # replace the attn layers, should be first, since Attention contains Linear layers
-            apply_func_to_submodules(self, 
-                    class_type=Attention,
-                    function=quant_attn_refactor_,
-                    name=None,
-                    parent_module=None,
-                    quant_config=self.quant_config,
-                    full_name=None,
-                    remain_fp_regex=self.quant_config.remain_fp_regex,
-                    )
-        if self.quant_config.get('cross_attn', False):
-            # replace the attn layers, should be first, since Attention contains Linear layers
-            apply_func_to_submodules(self, 
-                    class_type=MultiHeadCrossAttention,
-                    function=quant_cross_attn_refactor_,
-                    name=None,
-                    parent_module=None,
-                    quant_config=self.quant_config,
-                    full_name=None,
-                    remain_fp_regex=self.quant_config.remain_fp_regex,
+        '''
+        INFO: always replace the Attn & CrossAttn,
+        due to sometimes we need to FP infer the Quantized module for apply_hooks
+        '''
+        # replace the attn layers, should be first, since Attention contains Linear layers
+        apply_func_to_submodules(self,
+                class_type=Attention,
+                function=quant_attn_refactor_,
+                name=None,
+                parent_module=None,
+                quant_config=self.quant_config,
+                full_name=None,
+                remain_fp_regex=self.quant_config.remain_fp_regex,
+                )
+        # replace the attn layers, should be first, since Attention contains Linear layers
+        apply_func_to_submodules(self,
+                class_type=MultiHeadCrossAttention,
+                function=quant_cross_attn_refactor_,
+                name=None,
+                parent_module=None,
+                quant_config=self.quant_config,
+                full_name=None,
+                remain_fp_regex=self.quant_config.remain_fp_regex,
                     )
         # replace the linear layers
-        apply_func_to_submodules(self, 
+        apply_func_to_submodules(self,
                 class_type=nn.Linear,
                 function=quant_layer_refactor_,
                 name=None,
@@ -118,7 +120,7 @@ class QuantOpenSora(STDiT3):
 
 def quant_attn_refactor_(submodule,name,parent_module,quant_config,full_name,remain_fp_regex,class_type=None):
     
-    quant_layer_type = QuantizedAttention      
+    quant_layer_type = QuantizedAttention
 
     # set some layers as FP (fixed), feed in from config
     if remain_fp_regex is not None:
