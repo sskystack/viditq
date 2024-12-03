@@ -14,9 +14,11 @@ act:
 attn:
     qk:
         n_bits: 8
+        sym: True
         reorder_file_path: 
     v:
         n_bits: 8
+        sym: True
     attn_map:  # V*attn_map_post_softmax quantized
         n_bits: 8
         sym: True
@@ -28,8 +30,8 @@ cross_attn:
     v:
       n_bits: 8
       sym: True
-    # attn_map:
-    #   n_bits: 8
-    #   sym: True
+    attn_map:
+      n_bits: 8
+      sym: True
 
 

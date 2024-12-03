@@ -111,13 +111,23 @@ class DynamicQuantizer(BaseQuantizer):
     def quantize(self, x:torch.Tensor):
          # get the quant_params online
         assert len(x.shape) == 2  # [N_group, -1]
+        assert torch.isnan(x).sum() == 0  # no nan exists
 
         if self.sym:
             x_absmax = x.abs().max(dim=1)[0]
             self.x_absmax = x_absmax
-
+            
             delta = x_absmax / self.n_levels
             zero_point = torch.zeros_like(delta, device=delta.device)
+            
+            eps = 1.e-4
+            try:
+                assert torch.all(delta.abs() > eps)
+            except:
+                # import ipdb; ipdb.set_trace()
+                delta[delta < eps] = eps
+                logger.info("unexpected small delta: {:.3e} exists in {}, set as eps".format(delta.abs().min(), self.module_name))
+                
         else:
             x_max = x.max(dim=1)[0]
             x_max[x_max<0] = 0. 
@@ -135,7 +145,7 @@ class DynamicQuantizer(BaseQuantizer):
             except:
                 import ipdb; ipdb.set_trace()
                 delta[delta < eps] = eps
-                logger.info("unexpected small delta: {:.3f} exists in {}, set as eps".format(delta.abs().min(), self.module_name))
+                logger.info("unexpected small delta: {:.3e} exists in {}, set as eps".format(delta.abs().min(), self.module_name))
             zero_point = torch.round(x_min/delta) + (self.n_levels/2)
 
         self.delta = delta.unsqueeze(-1)  # [G] -> [G,1]

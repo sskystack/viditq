@@ -159,6 +159,8 @@ def quant_attn_refactor_(submodule,name,parent_module,quant_config,full_name,rem
     setattr(getattr(parent_module, name), 'module_name', full_name)
     if getattr(parent_module, name).attn_map_quantizer is not None:
         setattr(getattr(parent_module, name).attn_map_quantizer, 'module_name', full_name)
+        if hasattr(getattr(parent_module, name).attn_map_quantizer, 'attn_map_quantizer'):
+            setattr(getattr(parent_module, name).attn_map_quantizer.attn_map_quantizer, 'module_name', full_name) # DIRTY: this is the actual `DynamicQuantizer`
     
 def quant_cross_attn_refactor_(submodule,name,parent_module,quant_config,full_name,remain_fp_regex,class_type=None):
     
@@ -190,6 +192,8 @@ def quant_cross_attn_refactor_(submodule,name,parent_module,quant_config,full_na
     setattr(getattr(parent_module, name), 'module_name', full_name)
     if getattr(parent_module, name).attn_map_quantizer is not None:
         setattr(getattr(parent_module, name).attn_map_quantizer, 'module_name', full_name)
+        if hasattr(getattr(parent_module, name).attn_map_quantizer, 'attn_map_quantizer'):
+            setattr(getattr(parent_module, name).attn_map_quantizer.attn_map_quantizer, 'module_name', full_name) # DIRTY: this is the actual `DynamicQuantizer`
 
 class QuantizedAttention(nn.Module):
     def __init__(
