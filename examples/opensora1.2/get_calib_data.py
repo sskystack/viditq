@@ -8,6 +8,7 @@ from pprint import pformat
 import colossalai
 import torch
 import torch.distributed as dist
+import torch.nn as nn
 from colossalai.cluster import DistCoordinator
 from mmengine.runner import set_random_seed
 from tqdm import tqdm
@@ -36,6 +37,64 @@ from opensora.utils.inference_utils import (
 )
 from opensora.utils.misc import all_exists, create_logger, is_distributed, is_main_process, to_torch_dtype
 from qdiff.utils import apply_func_to_submodules, seed_everything
+
+class SaveActivationHook:
+
+    def __init__(self, type=None, original_shape=None):
+        self.hook_handle = None
+        self.type = type
+        self.original_shape = original_shape
+        self.outputs = []
+        self.attn_ds_rate = 64
+        
+    def attn_map_downsample(self, data):
+        '''
+        down_sample in the N_token dimension, handle the indivisible situation. 
+        '''
+        assert self.type == 'attn'
+        BS, head_per_split_num, N_token, N_token = self.original_shape
+        N_remainder = N_token % self.attn_ds_rate
+        data = data[:,:,:-N_remainder,:-N_remainder]
+        data = data.reshape([
+            BS,head_per_split_num,N_token//self.attn_ds_rate,self.attn_ds_rate,N_token//self.attn_ds_rate,self.attn_ds_rate
+            ])
+        return data.max(dim=3)[0].max(dim=4)[0]
+        
+    def __call__(self, module, module_in, module_out):
+        '''
+        the input shape could be [BS, N_group];
+        reduce along the head dimension. 
+        '''
+        if self.type == 'qk':
+            BS, head_per_split_num, N_token, N_dim = self.original_shape
+            data = module_in[0].reshape(self.original_shape).to('cpu')
+            # data = module_in[0].reshape(self.original_shape).abs().max(dim=-1)[0].to('cpu') # avoid taking up too much GPU memory
+        elif self.type == 'v':
+            BS, head_per_split_num, N_dim, N_token = self.original_shape
+            data = module_in[0].reshape(self.original_shape).to('cpu')
+        elif self.type == 'attn':
+            BS, head_per_split_num, N_token, N_token = self.original_shape
+            data = module_in[0].reshape(self.original_shape).to('cpu')
+            if self.attn_ds_rate is not None:
+                data = self.attn_map_downsample(data)
+        elif self.type == 'cross_attn':
+            BS, head_per_split_num, N_image_token, N_text_token = self.original_shape
+            data = module_in[0].reshape(self.original_shape).to('cpu')
+            # no attn_downsample for cross_attn, it wont be that big. 
+        else:
+            raise NotImplementedError
+        
+        # TODO: maybe post processing. 
+        self.outputs.append(data)
+
+    def clear(self):
+        self.outputs = []
+
+def add_hook_to_module_(module, hook_cls, **kwargs):
+    hook = hook_cls(**kwargs)
+    hook.hook_handle = module.register_forward_hook(hook)
+    return hook
+
 
 def main():
     torch.set_grad_enabled(False)
@@ -114,8 +173,8 @@ def main():
     quant_config.attn.qk = None
     quant_config.attn.v = None
     quant_config.attn.attn_map = None
-    quant_config.cross_attn.q = None
-    quant_config.cross_attn.kv = None
+    quant_config.cross_attn.qk = None
+    quant_config.cross_attn.v = None
     quant_config.cross_attn.attn_map = None
 
     input_size = (num_frames, *image_size)
@@ -141,14 +200,58 @@ def main():
     scheduler = build_module(cfg.scheduler, SCHEDULERS)
     
     '''
-    INFO: the quant inference.
+    INFO: the quant inference, however, no quantizer is applied, so no loading the quant_params
     '''
     # quant_param_ckpt = torch.load(os.path.join(cfg.save_dir,"./quant_params.pth"), weights_only=True)
     # model.load_quant_param_dict(quant_param_ckpt)
     model.set_init_done()
 
     logger.info(str(model))
+    
+    
+    # ------------ Add the Hooks for Calib Data --------------
+    '''
+    INFO: add the hook for hooking the activations, specify which layers to add. 
+    Also, for Attention and Cross Attention, the hooks are specified during its init, 
+    and could be accessed directly through tthe module. No need to add through `apply_func_to_submodule`
+    '''
+    # kwargs = {
+    #     'hook_cls': SaveActivationHook,
+    # }
+    # hook_d = apply_func_to_submodules(model,
+    #                         class_type=nn.Linear,  # add hook to all objects of this cls
+    #                         function=add_hook_to_module_,
+    #                         return_d={},
+    #                         **kwargs
+    #                         )
+    '''
+    INFO: set the Attention module `apply_hook` as True
+    '''
+    for i_, spatial_block_ in enumerate(model.spatial_blocks):
+        
+        module_ = spatial_block_.cross_attn
+        module_.apply_hooks = True
+        module_.hooks = {}
+        # add hooks
+        module_.hooks['q'] = add_hook_to_module_(module_.q_quantizer, SaveActivationHook, type='qk')
+        module_.hooks['k'] = add_hook_to_module_(module_.k_quantizer, SaveActivationHook, type='qk')
+        module_.hooks['v'] = add_hook_to_module_(module_.v_quantizer, SaveActivationHook, type='v')
+        module_.hooks['attn_map'] = add_hook_to_module_(module_.attn_map_quantizer, SaveActivationHook, type='cross_attn')  
 
+    for i_, temporal_block_ in enumerate(model.temporal_blocks):
+        temporal_block_.cross_attn.apply_hooks = True
+        temporal_block_.cross_attn.hooks = True
+        
+        module_ = temporal_block_.cross_attn
+        module_.apply_hooks = True
+        module_.hooks = {}
+        # add hooks
+        module_.hooks['q'] = add_hook_to_module_(module_.q_quantizer, SaveActivationHook, type='qk')
+        module_.hooks['k'] = add_hook_to_module_(module_.k_quantizer, SaveActivationHook, type='qk')
+        module_.hooks['v'] = add_hook_to_module_(module_.v_quantizer, SaveActivationHook, type='v')
+        module_.hooks['attn_map'] = add_hook_to_module_(module_.attn_map_quantizer, SaveActivationHook, type='cross_attn')  
+    # ------------ Add the Hooks for Calib Data --------------
+    
     # ======================================================
     # inference
     # ======================================================
@@ -340,8 +443,20 @@ def main():
         start_idx += len(batch_prompts)
     logger.info("Inference finished.")
     logger.info("Saved %s samples to %s", start_idx, save_dir)
-
-
+    
+    # --------- Unpack the hooked results and save  -------------
+    save_d = {}
+    block_ids = [1,2]  # None means all blocks
+    
+    for i_, spatial_block_ in enumerate([model.spatial_blocks[block_id] for block_id in block_ids]):
+        for k_ in spatial_block_.cross_attn.hooks.keys():
+            save_d['spatial_block{}_cross_attn_{}'.format(i_,k_)] = torch.stack(spatial_block_.cross_attn.hooks[k_].outputs, dim=0) # [N_iter, x_shpae]
+    
+    for i_, temporal_block_ in enumerate([model.temporal_blocks[block_id] for block_id in block_ids]):
+        for k_ in temporal_block_.cross_attn.hooks.keys():
+            save_d['temporal_block{}_cross_attn_{}'.format(i_,k_)] = torch.stack(temporal_block_.cross_attn.hooks[k_].outputs, dim=0) # [N_iter, x_shpae]
+            
+    torch.save(save_d, './visualization/cross_attn_acts.pth')
 
 if __name__ == "__main__":
     main()
