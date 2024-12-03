@@ -52,25 +52,25 @@ class QuantOpenSora(STDiT3):
         due to sometimes we need to FP infer the Quantized module for apply_hooks
         '''
         # replace the attn layers, should be first, since Attention contains Linear layers
-        apply_func_to_submodules(self,
-                class_type=Attention,
-                function=quant_attn_refactor_,
-                name=None,
-                parent_module=None,
-                quant_config=self.quant_config,
-                full_name=None,
-                remain_fp_regex=self.quant_config.remain_fp_regex,
-                )
+        # apply_func_to_submodules(self,
+        #         class_type=Attention,
+        #         function=quant_attn_refactor_,
+        #         name=None,
+        #         parent_module=None,
+        #         quant_config=self.quant_config,
+        #         full_name=None,
+        #         remain_fp_regex=self.quant_config.remain_fp_regex,
+        #         )
         # replace the attn layers, should be first, since Attention contains Linear layers
-        apply_func_to_submodules(self,
-                class_type=MultiHeadCrossAttention,
-                function=quant_cross_attn_refactor_,
-                name=None,
-                parent_module=None,
-                quant_config=self.quant_config,
-                full_name=None,
-                remain_fp_regex=self.quant_config.remain_fp_regex,
-                    )
+        # apply_func_to_submodules(self,
+        #         class_type=MultiHeadCrossAttention,
+        #         function=quant_cross_attn_refactor_,
+        #         name=None,
+        #         parent_module=None,
+        #         quant_config=self.quant_config,
+        #         full_name=None,
+        #         remain_fp_regex=self.quant_config.remain_fp_regex,
+        #             )
         # replace the linear layers
         apply_func_to_submodules(self,
                 class_type=nn.Linear,
