@@ -45,7 +45,7 @@ class SaveActivationHook:
         self.type = type
         self.original_shape = original_shape
         self.outputs = []
-        self.attn_ds_rate = 64
+        self.attn_ds_rate = None
         
     def attn_map_downsample(self, data):
         '''
@@ -227,29 +227,41 @@ def main():
     '''
     INFO: set the Attention module `apply_hook` as True
     '''
+    attn_type = 'attn'  # 'attn' or 'cross_attn'
+    assert attn_type in ['attn','cross_attn']
     for i_, spatial_block_ in enumerate(model.spatial_blocks):
         
-        module_ = spatial_block_.cross_attn
+        if attn_type == 'attn':
+            module_ = spatial_block_.attn
+        elif attn_type == 'cross_attn':
+            module_ = spatial_block_.cross_attn
+        else:
+            raise NotImplementedError
+        
         module_.apply_hooks = True
         module_.hooks = {}
         # add hooks
         module_.hooks['q'] = add_hook_to_module_(module_.q_quantizer, SaveActivationHook, type='qk')
         module_.hooks['k'] = add_hook_to_module_(module_.k_quantizer, SaveActivationHook, type='qk')
         module_.hooks['v'] = add_hook_to_module_(module_.v_quantizer, SaveActivationHook, type='v')
-        module_.hooks['attn_map'] = add_hook_to_module_(module_.attn_map_quantizer, SaveActivationHook, type='cross_attn')  
+        module_.hooks['attn_map'] = add_hook_to_module_(module_.attn_map_quantizer, SaveActivationHook, type=attn_type)  
 
     for i_, temporal_block_ in enumerate(model.temporal_blocks):
-        temporal_block_.cross_attn.apply_hooks = True
-        temporal_block_.cross_attn.hooks = True
         
-        module_ = temporal_block_.cross_attn
+        if attn_type == 'attn':
+            module_ = temporal_block_.attn
+        elif attn_type == 'cross_attn':
+            module_ = temporal_block_.cross_attn
+        else:
+            raise NotImplementedError
+        
         module_.apply_hooks = True
         module_.hooks = {}
         # add hooks
         module_.hooks['q'] = add_hook_to_module_(module_.q_quantizer, SaveActivationHook, type='qk')
         module_.hooks['k'] = add_hook_to_module_(module_.k_quantizer, SaveActivationHook, type='qk')
         module_.hooks['v'] = add_hook_to_module_(module_.v_quantizer, SaveActivationHook, type='v')
-        module_.hooks['attn_map'] = add_hook_to_module_(module_.attn_map_quantizer, SaveActivationHook, type='cross_attn')  
+        module_.hooks['attn_map'] = add_hook_to_module_(module_.attn_map_quantizer, SaveActivationHook, type=attn_type)  
     # ------------ Add the Hooks for Calib Data --------------
     
     # ======================================================
@@ -446,17 +458,19 @@ def main():
     
     # --------- Unpack the hooked results and save  -------------
     save_d = {}
-    block_ids = [1,2]  # None means all blocks
+    block_ids = [1]  # None means all blocks
     
     for i_, spatial_block_ in enumerate([model.spatial_blocks[block_id] for block_id in block_ids]):
-        for k_ in spatial_block_.cross_attn.hooks.keys():
-            save_d['spatial_block{}_cross_attn_{}'.format(i_,k_)] = torch.stack(spatial_block_.cross_attn.hooks[k_].outputs, dim=0) # [N_iter, x_shpae]
+        module_ = spatial_block_.cross_attn if attn_type == 'cross_attn' else spatial_block_.attn
+        for k_ in module_.hooks.keys():
+            save_d['spatial_block{}_{}_{}'.format(i_,attn_type,k_)] = torch.stack(module_.hooks[k_].outputs, dim=0) # [N_iter, x_shpae]
     
     for i_, temporal_block_ in enumerate([model.temporal_blocks[block_id] for block_id in block_ids]):
-        for k_ in temporal_block_.cross_attn.hooks.keys():
-            save_d['temporal_block{}_cross_attn_{}'.format(i_,k_)] = torch.stack(temporal_block_.cross_attn.hooks[k_].outputs, dim=0) # [N_iter, x_shpae]
+        module_ = temporal_block_.cross_attn if attn_type == 'cross_attn' else temporal_block_.attn
+        for k_ in module_.hooks.keys():
+            save_d['temporal_block{}_{}_{}'.format(i_,attn_type,k_)] = torch.stack(module_.hooks[k_].outputs, dim=0) # [N_iter, x_shpae]
             
-    torch.save(save_d, './visualization/cross_attn_acts.pth')
+    torch.save(save_d, f'./visualization/{attn_type}_acts.pth')
 
 if __name__ == "__main__":
     main()
