@@ -1,6 +1,6 @@
 from opensora.models.stdit.stdit3 import STDiT3Config
 from models.quant_opensora import QuantOpenSora
-from omegaconf import OmegaConf
+from omegaconf import OmegaConf, ListConfig
 import os
 import time
 from pprint import pformat
@@ -110,7 +110,7 @@ def main():
                         patch_size=(1, 2, 2), 
                         num_heads=16, 
                         qk_norm=True,
-                        enable_flash_attn=False,
+                        enable_flash_attn=True,
                         enable_layernorm_kernel=False,  # no apex included
                         input_size=latent_size,
                         in_channels=vae.out_channels,
@@ -119,6 +119,7 @@ def main():
                         enable_sequence_parallelism=enable_sequence_parallelism)
     model_from_pretrained="/home/zhaotianchen/models/hpcai-tech/OpenSora-STDiT-v3"  # DIRTY
     model=(QuantOpenSora(quant_config,config,model_from_pretrained).to(device, dtype).eval())  
+    model.config = config  # INFO: add the config as model attribute, used in hardware_refactor
     if not precompute_text_embeds:
         text_encoder.y_embedder = model.y_embedder  # HACK: for classifier-free guidance
 
@@ -128,8 +129,29 @@ def main():
     '''
     INFO: the quant inference.
     '''
-    quant_param_ckpt = torch.load(os.path.join(cfg.save_dir,"./quant_params.pth"), weights_only=True)
-    model.load_quant_param_dict(quant_param_ckpt)
+    if_mixed_precision = isinstance(quant_config.weight.n_bits, ListConfig) or isinstance(quant_config.act.n_bits, ListConfig)
+    if if_mixed_precision:
+        model.bitwidth_refactor()
+        
+    if_hardware = cfg.get("hardware", False)
+    quant_weight_ckpt = cfg.get("quant_weight_ckpt", None)
+    if if_hardware:  # use the cuda kernel
+        assert not if_mixed_precision, ("mixed precision is currently not supported in CUDA kernels")
+        if quant_weight_ckpt is None:
+            save_path = os.path.join(cfg.save_dir, 'int_weight.pt')
+            # INFO: always regenerate the int_weigjt
+            quant_param_ckpt = torch.load(os.path.join(cfg.save_dir, "./quant_params.pth"), weights_only=True, map_location='cuda')
+            model.load_quant_param_dict(quant_param_ckpt)
+            model.quantize_and_save_weight(save_path=save_path)
+            # if not os.path.exists(save_path):
+            # else:
+            #     logger.info('int_weight.pth exists, loading from the local file...')
+            model.hardware_forward_refactor(load_path=save_path)
+
+    else:  # use the algorithm simulation
+        quant_param_ckpt = torch.load(os.path.join(cfg.save_dir, "./quant_params.pth"), weights_only=True)
+        model.load_quant_param_dict(quant_param_ckpt)
+    
     model.set_init_done()
 
     logger.info(str(model))

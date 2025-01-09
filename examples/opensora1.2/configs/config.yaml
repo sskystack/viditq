@@ -1,37 +1,37 @@
 model:
     model_id: "opensora"
     model_type: 'opensora'  # ['sd','sdxl']
-remain_fp_regex: embedder|adaLN_modulation|t_block
+remain_fp_regex: embedder|adaLN_modulation|t_block|final_layer|kv_linear|\b(?!cross_)attn\b
 calib_data:
 weight:
     n_bits: 8
     group: 'tensor'
-    sym: True
+    sym: False
 act:
     n_bits: 8
     group: 'token' # DIRTY: it is not used, forced as "token-wise"
     sym: True
-attn:
-    qk:
-        n_bits: 8
-        sym: True
-        reorder_file_path: 
-    v:
-        n_bits: 8
-        sym: True
-    attn_map:  # V*attn_map_post_softmax quantized
-        n_bits: 8
-        sym: True
-        group: 'row'
-cross_attn:
-    qk:
-      n_bits: 8
-      sym: True
-    v:
-      n_bits: 8
-      sym: True
-    attn_map:
-      n_bits: 8
-      sym: True
+# attn:
+#     qk:
+#         n_bits: 8
+#         sym: True
+#         reorder_file_path: 
+#     v:
+#         n_bits: 8
+#         sym: True
+#     attn_map:  # V*attn_map_post_softmax quantized
+#         n_bits: 8
+#         sym: True
+#         group: 'row'
+# cross_attn:
+#     qk:
+#       n_bits: 8
+#       sym: True
+#     v:
+#       n_bits: 8
+#       sym: True
+#     attn_map:
+#       n_bits: 8
+#       sym: True
 
 

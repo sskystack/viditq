@@ -588,8 +588,6 @@ class QuantCrossAttentionWithCudaKernel(nn.Module):
         # else:
         #     attn_bias = None
         
-        
-
         q = self.to_q(x, self.quant_params).view(B, -1, self.num_heads, self.head_dim).transpose(1,2)  # [1, 8192, 16, 72]
         # q = self.to_q(x).reshape([B,N,self.num_heads,-1]).transpose(1,2) # [1, 8192, 16, 72]
         k = self.to_k(cond).reshape([B,target_length,self.num_heads,-1]).transpose(1,2)  # [1, 600, 16, 72]
