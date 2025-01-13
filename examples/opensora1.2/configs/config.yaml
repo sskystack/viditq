@@ -1,10 +1,11 @@
 model:
     model_id: "opensora"
     model_type: 'opensora'  # ['sd','sdxl']
-remain_fp_regex: embedder|adaLN_modulation|t_block
+remain_fp_regex: \.
+#quarot:
+  #layer_name_regex: mlp.fc2
 calib_data:
-quarot:
-  layer_name_regex: mlp.fc2
+  save_path: ./calib_data.pth
 weight:
     n_bits: 8
     group: 'tensor'

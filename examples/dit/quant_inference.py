@@ -90,8 +90,8 @@ def main(args):
     diffusion = create_diffusion(str(args.num_sampling_steps))
     vae = AutoencoderKL.from_pretrained(f"stabilityai/sd-vae-ft-{args.vae}").to(device)
 
-    # class_labels = [217, 363, 347, 574, 188, 99, 47, 379]
-    class_labels = [47]
+    class_labels = [217, 363, 347, 574, 188, 99, 47, 379]
+    #class_labels = [47]
     n = len(class_labels)
     z = torch.randn(n, 4, latent_size, latent_size, device=device, dtype=torch.float16)
     y = torch.tensor(class_labels, device=device)  # type: long, not half

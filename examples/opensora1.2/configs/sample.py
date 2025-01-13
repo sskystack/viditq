@@ -1,12 +1,12 @@
-resolution = "144p"
+resolution = "720p"
 aspect_ratio = "9:16"
 num_frames = 64
 fps = 24
 frame_interval = 1
 save_fps = 24
-ptq_config='./configs/config.yaml'
-save_dir = "./logs/attn_int8_naive"
-seed = 114514
+ptq_config='./configs/best.yaml'
+save_dir = "./logs/bestfinal_720"
+seed = 2
 batch_size = 1
 multi_resolution = "STDiT2"
 dtype = "bf16"
@@ -43,5 +43,5 @@ scheduler = dict(
 aes = 6.5
 flow = None
 
-precompute_text_embeds = True
+precompute_text_embeds = False
 model_path="/home/zhaotianchen/models"
