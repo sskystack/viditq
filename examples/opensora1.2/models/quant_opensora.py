@@ -230,11 +230,7 @@ class QuantizedAttention(nn.Module):
         self.is_causal = False
         
         # ------------- For Quantization ---------------
-        # enable to turn on the intermediate savings 
-        self.apply_hooks = False  
-        if self.apply_hooks:
-            self.hooks = {}  # hook_handle to store activations
-        
+
         # the quant part.
         assert quant_config is not None
         self.quant_config = quant_config
@@ -247,20 +243,21 @@ class QuantizedAttention(nn.Module):
         if self.quant_config.attn.get('qk', None) is not None:
             self.q_quantizer = DynamicQuantizer(self.quant_config.attn.qk)
             self.k_quantizer = DynamicQuantizer(self.quant_config.attn.qk)
-            if self.apply_hooks:
-                self.hooks['q'] = add_hook_to_module_(self.q_quantizer, SaveActivationHook, type='qk')
-                self.hooks['k'] = add_hook_to_module_(self.k_quantizer, SaveActivationHook, type='qk')
+        else:
+            self.q_quantizer = nn.Identity()
+            self.k_quantizer = nn.Identity()
         
         if self.quant_config.attn.get('v', None) is not None:
             self.v_quantizer = DynamicQuantizer(self.quant_config.attn.v)
-            if self.apply_hooks:
-                self.hooks['v'] = add_hook_to_module_(self.v_quantizer, SaveActivationHook, type='v')
+        else:
+            self.v_quantizer = nn.Identity()
                 
         if self.quant_config.attn.get('attn_map', None) is not None:
-            self.attn_map_quantizer = QuantizedAttentionMapOpenSORA(self.quant_config)
-
-            if self.apply_hooks:
-                self.hooks['attn_map'] = add_hook_to_module_(self.attn_map_quantizer, SaveActivationHook, type='attn')        
+            self.attn_map_quantizer = QuantizedAttentionMapOpenSORA(self.quant_config) 
+        else:
+            self.attn_map_quantizer = nn.Identity()
+                            
+        self.apply_hooks = False  # default as False, set to true in `get_calib_data.py` 
         
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         B, N, C = x.shape
@@ -302,21 +299,20 @@ class QuantizedAttention(nn.Module):
             N_temporal_token = BS//2
             assert N_head == self.num_heads
             N_token = N_spatial_token
-            
-        if self.q_quantizer is not None:
-            if self.apply_hooks:
-                self.hooks['q'].original_shape = [BS, N_head, N_token, N_dim]
-            q = self.q_quantizer(q.reshape([-1,N_dim])).reshape([BS, N_head, N_token, N_dim])
-        if self.k_quantizer is not None:
-            if self.apply_hooks:
-                self.hooks['k'].original_shape = [BS, N_head, N_token, N_dim]
-            k = self.k_quantizer(k.reshape([-1,N_dim])).reshape([BS, N_head, N_token, N_dim])
-        if self.v_quantizer is not None:
-            if self.apply_hooks:
-                self.hooks['v'].original_shape = [BS, N_head, N_token, N_dim]
-            v = self.v_quantizer(
-                v.permute([0,1,3,2]).reshape([-1, N_token])  # all tokens share the same quant_params.
-                ).reshape([BS, N_head, N_dim, N_token]).permute([0,1,3,2])
+
+        if self.apply_hooks:
+            self.hooks['q'].original_shape = [BS, N_head, N_token, N_dim]
+        q = self.q_quantizer(q.reshape([-1,N_dim])).reshape([BS, N_head, N_token, N_dim])
+        
+        if self.apply_hooks:
+            self.hooks['k'].original_shape = [BS, N_head, N_token, N_dim]
+        k = self.k_quantizer(k.reshape([-1,N_dim])).reshape([BS, N_head, N_token, N_dim])
+        
+        if self.apply_hooks:
+            self.hooks['v'].original_shape = [BS, N_head, N_token, N_dim]
+        v = self.v_quantizer(
+            v.permute([0,1,3,2]).reshape([-1, N_token])  # all tokens share the same quant_params.
+            ).reshape([BS, N_head, N_dim, N_token]).permute([0,1,3,2])
 
         if enable_flash_attn:
             raise AssertionError("quantized attention are not supported with flash_attn yet.")
@@ -377,12 +373,7 @@ class QuantizedMultiHeadCrossAttention(nn.Module):
         self.proj = nn.Linear(d_model, d_model)
         self.proj_drop = nn.Dropout(proj_drop)
         
-        # ------------- For Quantization ---------------
-        # enable to turn on the intermediate savings 
-        self.apply_hooks = False  
-        if self.apply_hooks:
-            self.hooks = {}  # hook_handle to store activations
-        
+        # ------------- For Quantization ---------------        
         # the quant part.
         assert quant_config is not None
         self.quant_config = quant_config
@@ -392,23 +383,25 @@ class QuantizedMultiHeadCrossAttention(nn.Module):
         self.v_quantizer = None
         self.attn_map_quantizer = None
         
-        if self.quant_config.cross_attn.get('q', None) is not None:
-            self.q_quantizer = DynamicQuantizer(self.quant_config.cross_attn.q)
-            if self.apply_hooks:
-                self.hooks['q'] = add_hook_to_module_(self.q_quantizer, SaveActivationHook, type='qk')
         
-        if self.quant_config.cross_attn.get('kv', None) is not None:
-            self.v_quantizer = DynamicQuantizer(self.quant_config.cross_attn.kv)
-            self.k_quantizer = DynamicQuantizer(self.quant_config.cross_attn.kv)
-            if self.apply_hooks:
-                self.hooks['k'] = add_hook_to_module_(self.k_quantizer, SaveActivationHook, type='qk')
-                self.hooks['v'] = add_hook_to_module_(self.v_quantizer, SaveActivationHook, type='v')
+        if self.quant_config.cross_attn.get('qk', None) is not None:
+            self.q_quantizer = DynamicQuantizer(self.quant_config.cross_attn.qk)
+            self.k_quantizer = DynamicQuantizer(self.quant_config.cross_attn.qk)
+        else:
+            self.q_quantizer = nn.Identity()   # for hooks to apply on some module
+            self.k_quantizer = nn.Identity()
+
+        if self.quant_config.cross_attn.get('v', None) is not None:
+            self.v_quantizer = DynamicQuantizer(self.quant_config.cross_attn.v)
+        else:
+            self.v_quantizer = nn.Identity()
                 
         if self.quant_config.cross_attn.get('attn_map', None) is not None:
             self.attn_map_quantizer = QuantizedAttentionMapOpenSORA(self.quant_config, cross_attn=True)
-
-            if self.apply_hooks:
-                self.hooks['attn_map'] = add_hook_to_module_(self.attn_map_quantizer, SaveActivationHook, type='attn')        
+        else:
+            self.attn_map_quantizer = nn.Identity()      
+        
+        self.apply_hooks = False  # default as False, set to true in `get_calib_data.py`
 
     def forward(self, x, cond, mask=None):
         # query/value: img tokens; key: condition; mask: if padding tokens
@@ -433,24 +426,23 @@ class QuantizedMultiHeadCrossAttention(nn.Module):
             '''INFO: Quantization of the QKV'''
             BS, N_head, N_image_token, N_dim = q.shape
             BS, N_head, N_text_token, N_dim = v.shape
-            
-            if self.q_quantizer is not None:
-                q_shape = q.shape
-                if self.apply_hooks:
-                    self.hooks['q'].original_shape = q_shape
-                q = self.q_quantizer(q.reshape([-1,N_dim])).reshape(q_shape)
-            if self.k_quantizer is not None:
-                k_shape = k.shape
-                if self.apply_hooks:
-                    self.hooks['k'].original_shape = k_shape
-                k = self.k_quantizer(k.reshape([-1,N_dim])).reshape(k_shape)
-            if self.v_quantizer is not None:
-                v_shape = v.shape
-                if self.apply_hooks:
-                    self.hooks['v'].original_shape = v_shape
-                v = self.v_quantizer(
-                    v.permute([0,1,3,2]).reshape([-1, N_text_token])  # all tokens share the same quant_params.
-                    ).reshape([BS, N_head, N_dim, N_text_token]).permute([0,1,3,2])
+        
+            q_shape = q.shape
+            if self.apply_hooks:
+                self.hooks['q'].original_shape = q_shape
+            q = self.q_quantizer(q.reshape([-1,N_dim])).reshape(q_shape)
+        
+            k_shape = k.shape
+            if self.apply_hooks:
+                self.hooks['k'].original_shape = k_shape
+            k = self.k_quantizer(k.reshape([-1,N_dim])).reshape(k_shape)
+                
+            v_shape = v.shape
+            if self.apply_hooks:
+                self.hooks['v'].original_shape = v_shape
+            v = self.v_quantizer(
+                v.permute([0,1,3,2]).reshape([-1, N_text_token])  # all tokens share the same quant_params.
+                ).reshape([BS, N_head, N_dim, N_text_token]).permute([0,1,3,2])
             
             attn = q @ k.transpose(-2, -1).contiguous()
             dtype_ = attn.dtype
@@ -465,8 +457,7 @@ class QuantizedMultiHeadCrossAttention(nn.Module):
             assert attn.shape == (BS, N_head, N_image_token, N_text_token)
             if self.apply_hooks:
                 self.hooks['attn_map'].original_shape = (BS, N_head, N_image_token, N_text_token)
-            if self.attn_map_quantizer is not None:
-                attn = self.attn_map_quantizer(attn)     
+            attn = self.attn_map_quantizer(attn)     
 
             attn = attn @ v 
             attn = attn.transpose(1, 2).contiguous()
@@ -485,55 +476,3 @@ class QuantizedMultiHeadCrossAttention(nn.Module):
         x = self.proj_drop(x)
         return x
 
-class SaveActivationHook:
-
-    def __init__(self, type=None, original_shape=None):
-        self.hook_handle = None
-        self.type = type
-        self.original_shape = original_shape
-        self.outputs = []
-        self.attn_ds_rate = 64
-        
-    def attn_map_downsample(self, data):
-        '''
-        down_sample in the N_token dimension, handle the indivisible situation. 
-        '''
-        assert self.type == 'attn'
-        BS, head_per_split_num, N_token, N_token = self.original_shape
-        N_remainder = N_token % self.attn_ds_rate
-        data = data[:,:,:-N_remainder,:-N_remainder]
-        data = data.reshape([
-            BS,head_per_split_num,N_token//self.attn_ds_rate,self.attn_ds_rate,N_token//self.attn_ds_rate,self.attn_ds_rate
-            ])
-        return data.max(dim=3)[0].max(dim=4)[0]
-        
-    def __call__(self, module, module_in, module_out):
-        '''
-        the input shape could be [BS, N_group];
-        reduce along the head dimension. 
-        '''
-        if self.type == 'qk':
-            BS, head_per_split_num, N_token, N_dim = self.original_shape
-            data = module_in[0].reshape(self.original_shape).to('cpu')
-            # data = module_in[0].reshape(self.original_shape).abs().max(dim=-1)[0].to('cpu') # avoid taking up too much GPU memory
-        elif self.type == 'v':
-            BS, head_per_split_num, N_dim, N_token = self.original_shape
-            data = module_in[0].reshape(self.original_shape).to('cpu')
-        elif self.type == 'attn':
-            BS, head_per_split_num, N_token, N_token = self.original_shape
-            data = module_in[0].reshape(self.original_shape).to('cpu')
-            if self.attn_ds_rate is not None:
-                data = self.attn_map_downsample(data)
-        else:
-            raise NotImplementedError
-        
-        # TODO: add processing. 
-        self.outputs.append(data)
-
-    def clear(self):
-        self.outputs = []
-
-def add_hook_to_module_(module, hook_cls, **kwargs):
-    hook = hook_cls(**kwargs)
-    hook.hook_handle = module.register_forward_hook(hook)
-    return hook

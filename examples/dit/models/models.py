@@ -165,9 +165,9 @@ class DiT(nn.Module):
         self.patch_size = patch_size
         self.num_heads = num_heads
 
-        self.x_embedder = PatchEmbed(input_size, patch_size, in_channels, hidden_size, bias=True)
-        self.t_embedder = TimestepEmbedder(hidden_size)
-        self.y_embedder = LabelEmbedder(num_classes, hidden_size, class_dropout_prob)
+        self.x_embedder = PatchEmbed(input_size, patch_size, in_channels, hidden_size, bias=True).to(torch.float16)
+        self.t_embedder = TimestepEmbedder(hidden_size).to(torch.float16)
+        self.y_embedder = LabelEmbedder(num_classes, hidden_size, class_dropout_prob).to(torch.float16)
         num_patches = self.x_embedder.num_patches
         # Will use fixed sin-cos embedding:
         self.pos_embed = nn.Parameter(torch.zeros(1, num_patches, hidden_size), requires_grad=False)

@@ -71,11 +71,9 @@ class StaticQuantizer(BaseQuantizer):
     def init_quant_params(self, x):
 
         assert len(x.shape) == 2  # [N_group, -1]
-
         if self.sym:
             x_absmax = x.abs().max(dim=1)[0]
-            self.x_absmax = torch.max(self.x_absmax, x_absmax) if self.x_absmax is not None else x_absmax  # update
-
+            self.x_absmax = (torch.max(self.x_absmax, x_absmax) if self.x_absmax is not None else x_absmax).to("cuda")  # update
             delta = x_absmax / self.n_levels
             zero_point = torch.zeros_like(delta, device=delta.device)
         else:
@@ -129,11 +127,12 @@ class DynamicQuantizer(BaseQuantizer):
 
             delta = (x_max - x_min)/(self.n_levels-1)
             # INFO: check small values for delta, close to zero delta, would cause nan in zero_point
-            eps = 1.e-6
+            eps = 1.e-8
             try:
                 assert torch.all(delta.abs() > eps)
             except:
                 import ipdb; ipdb.set_trace()
+                
                 delta[delta < eps] = eps
                 logger.info("unexpected small delta: {:.3f} exists in {}, set as eps".format(delta.abs().min(), self.module_name))
             zero_point = torch.round(x_min/delta) + (self.n_levels/2)

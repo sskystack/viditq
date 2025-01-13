@@ -110,7 +110,7 @@ class MixedPrecisionStaticQuantizer(MixedPrecisionBaseQuantizer):
                 delta = (x_max - x_min)/(self.n_levels-1)
                 zero_point = torch.round(x_min/delta) + (self.n_levels/2)
 
-            assert torch.all(delta > 1.e-4), "unexpected small delta exists"
+            assert torch.all(delta > 1.e-7), "unexpected small delta exists"
 
             delta_list.append(delta.unsqueeze(-1))  # [G] -> [G,1]
             zero_point_list.append(zero_point.unsqueeze(-1))

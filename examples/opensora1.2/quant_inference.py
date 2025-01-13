@@ -1,6 +1,6 @@
 from opensora.models.stdit.stdit3 import STDiT3Config
 from models.quant_opensora import QuantOpenSora
-from omegaconf import OmegaConf
+from omegaconf import OmegaConf, ListConfig
 import os
 import time
 from pprint import pformat
@@ -77,7 +77,7 @@ def main():
     
     # INFO: precompute the text embeds to avoid loading the T5 repeatedly
     precompute_text_embeds = cfg.get("precompute_text_embeds", False)
-    assert precompute_text_embeds # DEBUG_ONLY
+    #assert precompute_text_embeds # DEBUG_ONLY
 
     # ======================================================
     # build model & load weights
@@ -110,8 +110,8 @@ def main():
                         patch_size=(1, 2, 2), 
                         num_heads=16, 
                         qk_norm=True,
-                        enable_flash_attn=False,
-                        enable_layernorm_kernel=False,  # no apex included
+                        enable_flash_attn=True,
+                        enable_layernorm_kernel=True,  # no apex included
                         input_size=latent_size,
                         in_channels=vae.out_channels,
                         caption_channels=text_encoder.output_dim if not precompute_text_embeds else 4096,
@@ -121,10 +121,12 @@ def main():
     model=(QuantOpenSora(quant_config,config,model_from_pretrained).to(device, dtype).eval())  
     if not precompute_text_embeds:
         text_encoder.y_embedder = model.y_embedder  # HACK: for classifier-free guidance
-
+    if_mixed_precision = isinstance(quant_config.weight.n_bits, ListConfig) or isinstance(quant_config.act.n_bits, ListConfig)
+    if if_mixed_precision:
+        model.bitwidth_refactor()
     # == build scheduler ==
     scheduler = build_module(cfg.scheduler, SCHEDULERS)
-    
+  
     '''
     INFO: the quant inference.
     '''

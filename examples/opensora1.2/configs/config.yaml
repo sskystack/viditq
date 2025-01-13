@@ -24,10 +24,10 @@ act:
 #         sym: True
 #         group: 'row'
 # cross_attn:
-#     q:
+#     qk:
 #       n_bits: 8
 #       sym: True
-#     kv:
+#     v:
 #       n_bits: 8
 #       sym: True
     # attn_map:

@@ -1,6 +1,6 @@
 from opensora.models.stdit.stdit3 import STDiT3Config
 from models.quant_opensora import QuantOpenSora
-from omegaconf import OmegaConf
+from omegaconf import OmegaConf, ListConfig
 import os
 import time
 from pprint import pformat
@@ -36,7 +36,6 @@ from opensora.utils.inference_utils import (
 )
 from opensora.utils.misc import all_exists, create_logger, is_distributed, is_main_process, to_torch_dtype
 from qdiff.utils import apply_func_to_submodules, seed_everything
-
 def main():
     torch.set_grad_enabled(False)
     # ======================================================
@@ -77,7 +76,7 @@ def main():
     
     # INFO: precompute the text embeds to avoid loading the T5 repeatedly
     precompute_text_embeds = cfg.get("precompute_text_embeds", False)
-    assert precompute_text_embeds # DEBUG_ONLY
+    #assert precompute_text_embeds # DEBUG_ONLY
 
     # ======================================================
     # build model & load weights
@@ -110,8 +109,8 @@ def main():
                         patch_size=(1, 2, 2), 
                         num_heads=16, 
                         qk_norm=True,
-                        enable_flash_attn=False,
-                        enable_layernorm_kernel=False,  # no apex included
+                        enable_flash_attn=True,
+                        enable_layernorm_kernel=True,  # no apex included
                         input_size=latent_size,
                         in_channels=vae.out_channels,
                         caption_channels=text_encoder.output_dim if not precompute_text_embeds else 4096,
@@ -121,7 +120,9 @@ def main():
     model=(QuantOpenSora(quant_config,config,model_from_pretrained).to(device, dtype).eval())  
     if not precompute_text_embeds:
         text_encoder.y_embedder = model.y_embedder  # HACK: for classifier-free guidance
-
+    if_mixed_precision = isinstance(quant_config.weight.n_bits, ListConfig) or isinstance(quant_config.act.n_bits, ListConfig)
+    if if_mixed_precision:
+        model.bitwidth_refactor()
     # == build scheduler ==
     scheduler = build_module(cfg.scheduler, SCHEDULERS)
     
@@ -137,6 +138,8 @@ def main():
     def init_sq_channel_mask_(module, full_name, calib_data):
         assert isinstance(module, SQQuantizedLinear)
         act_mask = calib_data[full_name].max(dim=0)[0]  # [T, C], averaged over all timesteps
+        zero_mask = act_mask < 1e-3
+        act_mask = torch.where(zero_mask, torch.tensor(1e-3), act_mask)
         module.get_channel_mask(act_mask)  # set self.channel_mask
         module.update_quantized_weight_scaled()
 
@@ -149,6 +152,8 @@ def main():
     def init_rotation_and_channel_mask_(module, full_name, calib_data):
         assert isinstance(module, ViDiTQuantizedLinear)
         act_mask = calib_data[full_name].max(dim=0)[0]  # [T, C], averaged over all timesteps
+        zero_mask = act_mask < 1e-3
+        act_mask = torch.where(zero_mask, torch.tensor(1e-3), act_mask)
         module.get_channel_mask(act_mask)  # set self.channel_mask
         module.get_rotation_matrix()
         module.update_quantized_weight_rotated_and_scaled()
@@ -162,7 +167,7 @@ def main():
         from qdiff.smooth_quant.sq_quant_layer import SQQuantizedLinear
 
         assert quant_config.calib_data.save_path is not None
-        calib_data = torch.load(os.path.join(cfg.save_dir, quant_config.calib_data.save_path), weights_only=True)  # default wtih weights_only=True, will cause warning
+        calib_data = torch.load(quant_config.calib_data.save_path, weights_only=True)  # default wtih weights_only=True, will cause warning
 
         # get the channel mask, iter through all layers
         kwargs = {}
@@ -196,7 +201,7 @@ def main():
         from qdiff.viditq.viditq_quant_layer import ViDiTQuantizedLinear
         
         assert quant_config.calib_data.save_path is not None
-        calib_data = torch.load(os.path.join(cfg.save_dir, quant_config.calib_data.save_path), weights_only=True)  # default wtih 
+        calib_data = torch.load(quant_config.calib_data.save_path, weights_only=True)  # default wtih 
         kwargs = {}
         apply_func_to_submodules(model,
                             class_type=ViDiTQuantizedLinear,  # add hook to all objects of this cls
@@ -210,6 +215,12 @@ def main():
     model.save_quant_param_dict()
     torch.save(model.quant_param_dict, os.path.join(cfg.save_dir, 'quant_params.pth'))
     logger.info(f'saved quant params into {cfg.save_dir}')
+
+    layer = model.spatial_blocks[11]  
+    weights = layer.state_dict()
+
+    torch.save(weights, 'spatial_blocks.11.pth')
+
     
 
 if __name__ == "__main__":

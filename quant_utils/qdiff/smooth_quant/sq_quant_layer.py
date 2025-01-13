@@ -28,14 +28,19 @@ class SQQuantizedLinear(QuantizedLinear):
         # generate the weight mask
         weight_mask = self.fp_module.weight.abs().max(dim=0)[0] # [C_in]
         channel_mask = (weight_mask.abs()**self.alpha) / (act_mask.abs()**(1-self.alpha)) # negative value with **alpha will raise nan
+        #print(f'weight={weight_mask.abs()[721]},act={act_mask.abs()[721]}')
+        #print(f'channel_mask_shape={channel_mask.shape},nan={torch.isnan(channel_mask).any().item()}')
         self.channel_mask = channel_mask
-        assert not torch.isnan(channel_mask.any()), "nan exists in channel mask"
+        assert not torch.isinf(self.channel_mask).any().item(), "inf exists in channel_mask"
 
     def update_quantized_weight_scaled(self):
         assert self.channel_mask is not None
         C_out, C_in = self.fp_module.weight.shape
+        #print(f"init={self.weight.data[0]}")
         self.w_quantizer.init_done = False
         self.weight.data = self.w_quantizer(self.fp_module.weight / self.channel_mask.reshape([1, C_in]))
+        #print(f"updata={self.weight.data[0]}")
+        assert not torch.isnan(self.weight.data).any().item(), "nan exists in weight"
         self.w_quantizer.init_done = True
 
     def forward(self, x: torch.Tensor, *args, **kwargs) -> torch.Tensor:
@@ -48,8 +53,11 @@ class SQQuantizedLinear(QuantizedLinear):
             # reshape X into [G, -1] 
             B, N_token, C = x.shape
             x = x*self.channel_mask.reshape([1,1,C])
+            
             x = x.reshape([B*N_token,-1])
-
+            #isnan_mask = torch.isnan(x)
+            #print(torch.nonzero(isnan_mask, as_tuple=False))
+            assert not torch.isnan(x).any().item(), "nan exists in x"
             # quantize activation
             x = self.a_quantizer(x)
             x = x.reshape([B, N_token, C])
