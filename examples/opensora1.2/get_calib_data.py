@@ -46,7 +46,7 @@ class SaveActivationHook:
         self.type = type
         self.original_shape = original_shape
         self.outputs = []
-        self.attn_ds_rate = 64
+        self.attn_ds_rate = None
         
     def attn_map_downsample(self, data):
         '''

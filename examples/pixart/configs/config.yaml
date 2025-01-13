@@ -1,6 +1,6 @@
 model:
   model_id: pixart_sigma
-remain_fp_regex: adaln_single|caption_projection|proj_out|blocks.0|blocks.27
+remain_fp_regex: adaln_single|caption_projection|proj_out|blocks.0
 calib_data:
   save_path: ./calib_data.pth
 quarot:

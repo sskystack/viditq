@@ -94,7 +94,7 @@ def main(args):
     #class_labels = [47]
     n = len(class_labels)
     z = torch.randn(n, 4, latent_size, latent_size, device=device, dtype=torch.float16)
-    y = torch.tensor(class_labels, device=device)  # type: long, not half
+    y = torch.tensor(class_labels, device=device)  # type: long, not half. 
 
     # Setup classifier-free guidance:
     z = torch.cat([z, z], 0).contiguous()

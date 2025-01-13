@@ -9,7 +9,7 @@ save_dir = "./logs/bestfinal_720"
 seed = 2
 batch_size = 1
 multi_resolution = "STDiT2"
-dtype = "bf16"
+dtype = "fp16"  # when using cuda kernel, we cannot use the original bf16
 condition_frame_length = 5
 align = 5
 
@@ -18,7 +18,7 @@ model = dict(
     # from_pretrained="/share/public/zhuhongyu/hpcai-tech/OpenSora-STDiT-v3",
     from_pretrained="/home/zhaotianchen/models/hpcai-tech/OpenSora-STDiT-v3",
     qk_norm=True,
-    enable_flash_attn=False,
+    enable_flash_attn=True,
     enable_layernorm_kernel=False,  # didnot install apex
 )
 vae = dict(
@@ -45,3 +45,5 @@ flow = None
 
 precompute_text_embeds = False
 model_path="/home/zhaotianchen/models"
+hardware = True  # whether use the cuda kernel inference
+quant_weight_ckpt = None # use the default path for int_weight.pth

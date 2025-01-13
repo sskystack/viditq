@@ -33,8 +33,9 @@ from qdiff.base.quant_layer import QuantizedLinear
 from qdiff.utils import apply_func_to_submodules
 from qdiff.base.quant_model import quant_layer_refactor_, bitwidth_refactor_, load_quant_param_dict_, save_quant_param_dict_, set_init_done_
 
-logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
+from models.customize_transformer_block_cuda import BasicTransformerBlockWithCudaKernel, quantize_and_save_weight_
 
+logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 class CustomizePixArtTransformer2DModel(ModelMixin, ConfigMixin):
     r"""
@@ -243,6 +244,111 @@ class CustomizePixArtTransformer2DModel(ModelMixin, ConfigMixin):
                 full_name=None
                 )
         
+    # ------ used for infer with CUDA kernel ------- 
+    
+    def quantize_and_save_weight(self, save_path):
+
+        # set require_grad=False, since torch force the variable to be FP or complex (we assign them as torch.int8)
+        for param in self.parameters():
+            param.requires_grad_(False)
+
+        # iter through all QuantLayers and get quantized INT, fill into the state_dict
+        apply_func_to_submodules(self,
+                class_type=QuantizedLinear,
+                function=quantize_and_save_weight_,
+                full_name=None,
+                )
+        # delete the quant_params and fp_weights in the state_dict
+        sd = self.state_dict()
+        keys_to_delte = ['fp_weight','fp_module']
+        keys_to_rename = {
+                'w_quantizer.delta': 'scale_weight',
+                'w_quantizer.zero_point': 'zp_weight',
+                }
+        for k in list(sd.keys()):
+            if any(substring in k for substring in keys_to_delte):
+                del sd[k]
+            if any(substring in k for substring in keys_to_rename):
+                original_k = k
+                for substring in keys_to_rename.keys():
+                    if substring in k:
+                        k = k.replace(substring, keys_to_rename[substring])
+                sd[k] = sd.pop(original_k)
+
+        # INFO: we implement the "general" version of layernorm
+        # with the affine transform (wx+b) fused after the layernorm operation
+        # so the vanilla layernorm has w=1 and b=0
+        n_block = len(self.transformer_blocks)
+        for i_block in range(n_block):
+            hidden_size = self.transformer_blocks[0].ff.net[0].proj.in_features
+            sd['transformer_blocks.{}.norm1.weight'.format(i_block)] = torch.ones((hidden_size,), dtype=torch.float16)
+            sd['transformer_blocks.{}.norm2.weight'.format(i_block)] = torch.ones((hidden_size,), dtype=torch.float16)  
+        
+        logger.info('Remaining Keys')
+        for k in list(sd.keys()):
+            logger.info('key: {},  {}'.format(k, sd[k].dtype))
+        torch.save(sd, save_path)
+
+        logger.info("\nFinished Saving the Quantized Checkpoint...\n")
+
+    def hardware_forward_refactor(self, load_path):
+
+        from viditq_extension.nn.base import QuantParams
+
+        # (1) Set the seq_len to init the QuantParams 
+        # the per-token activation quantization has token-wise quant_params
+        # ----- ImageNet 256x256 -------
+        # latent_size: 256//8 = 32
+        # patch_emb: 2x2
+        # token_len = 16x16=256
+        # ----- PixArt 512x512 -------
+        # latent_size: 1024//8 = 128
+        # patch_emb: 2x2
+        # token_len = 64x64 = 4096
+        # ------------------------------
+        seq_len = 64 * 64 * 2 # 2*token_len, currently only support batch_size=1
+        self.quant_params = QuantParams(seq_len, has_sum_input=True, device=torch.device("cuda"))
+
+        # (2) replace the blocks, with cuda kernel version
+        n_block = len(self.transformer_blocks)
+        for i_block in range(n_block):
+            block_ = self.transformer_blocks[i_block]            
+            old_block = self.transformer_blocks[i_block]
+            
+            # DEBUG_ONLY: replace some layer as old.
+            old_attn1 = old_block.attn1
+            old_attn2 = old_block.attn2
+            old_ff = old_block.ff
+            
+            self.transformer_blocks[i_block] = BasicTransformerBlockWithCudaKernel(
+                    dim = block_.dim,
+                    num_attention_heads = block_.num_attention_heads,
+                    attention_head_dim = block_.attention_head_dim,
+                    dropout = block_.dropout,
+                    cross_attention_dim = block_.cross_attention_dim,
+                    activation_fn = block_.activation_fn,
+                    num_embeds_ada_norm = None,
+                    attention_bias = block_.attention_bias,
+                    upcast_attention = False,
+                    norm_type = "ada_norm_single",
+                    norm_elementwise_affine = block_.norm_elementwise_affine,
+                    norm_eps = block_.norm1.eps,
+                    attention_type = "default",
+                    quant_params=self.quant_params,
+                ).half().to('cuda')
+            
+            # DEBUG_ONLY: replace some layer as old.
+            # self.transformer_blocks[i_block].attn1 = old_attn1
+            # self.transformer_blocks[i_block].attn2 = old_attn2
+            # self.transformer_blocks[i_block].ff = old_ff
+            
+            setattr(self.transformer_blocks[i_block],'block_id',i_block)
+
+        # (3) load the integer weights
+        quant_sd = torch.load(load_path, weights_only=True, map_location='cuda')
+        self.load_state_dict(quant_sd, strict=True)
+    
+    
     # ------------------------------------------------------------------------------------
 
     def _set_gradient_checkpointing(self, module, value=False):

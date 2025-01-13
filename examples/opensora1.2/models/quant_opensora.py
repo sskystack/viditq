@@ -23,6 +23,9 @@ from qdiff.utils import apply_func_to_submodules
 from qdiff.base.quant_model import quant_layer_refactor_, bitwidth_refactor_, load_quant_param_dict_, save_quant_param_dict_, set_init_done_
 from qdiff.base.quant_attn import QuantizedAttentionMapOpenSORA
 
+from models.quant_opensora_cuda import quantize_and_save_weight_, STDiT3BlockWithCudaKernel
+
+
 import logging
 logger = logging.getLogger(__name__)
 
@@ -116,6 +119,143 @@ class QuantOpenSora(STDiT3):
                 full_name=None
                 )
         
+    # ------ used for infer with CUDA kernel ------- 
+    def quantize_and_save_weight(self, save_path):
+
+        # set require_grad=False, since torch force the variable to be FP or complex (we assign them as torch.int8)
+        for param in self.parameters():
+            param.requires_grad_(False)
+
+        # iter through all QuantLayers and get quantized INT, fill into the state_dict
+        apply_func_to_submodules(self,
+                class_type=QuantizedLinear,
+                function=quantize_and_save_weight_,
+                full_name=None,
+                )
+        # delete the quant_params and fp_weights in the state_dict
+        sd = self.state_dict()
+        keys_to_delete = ['fp_weight','fp_module']  # INFO: the ptq process, when `sym=True` the weight quant has 0. zero_point, so delete them.
+        keys_to_rename = {
+                'w_quantizer.delta': 'scale_weight',
+                'w_quantizer.zero_point': 'zp_weight',
+                }
+        for k in list(sd.keys()):
+            if any(substring in k for substring in keys_to_delete):
+                del sd[k]
+            if any(substring in k for substring in keys_to_rename):
+                original_k = k
+                for substring in keys_to_rename.keys():
+                    if substring in k:
+                        k = k.replace(substring, keys_to_rename[substring])
+                sd[k] = sd.pop(original_k)
+         
+        # INFO: we implement the "general" version of layernorm
+        # with the affine transform (wx+b) fused after the layernorm operation
+        # so the vanilla layernorm has w=1 and b=0   
+        n_block = len(self.spatial_blocks)
+        for i_block in range(n_block):
+            hidden_size = self.spatial_blocks[0].norm1.normalized_shape[0]
+            sd['spatial_blocks.{}.norm1.weight'.format(i_block)] = torch.ones((hidden_size,), dtype=torch.float16)
+            sd['spatial_blocks.{}.norm2.weight'.format(i_block)] = torch.ones((hidden_size,), dtype=torch.float16) 
+        n_block = len(self.temporal_blocks)
+        for i_block in range(n_block):
+            hidden_size = self.temporal_blocks[0].norm1.normalized_shape[0]
+            sd['temporal_blocks.{}.norm1.weight'.format(i_block)] = torch.ones((hidden_size,), dtype=torch.float16)
+            sd['temporal_blocks.{}.norm2.weight'.format(i_block)] = torch.ones((hidden_size,), dtype=torch.float16)  
+        
+        logger.info('Remaining Keys')
+        for k in list(sd.keys()):
+            logger.info('key: {},  {}'.format(k, sd[k].dtype))
+        torch.save(sd, save_path)
+
+        logger.info("\nFinished Saving the Quantized Checkpoint...\n")
+
+    def hardware_forward_refactor(self, load_path):
+
+        from viditq_extension.nn.base import QuantParams
+
+        # (1) Set the seq_len to init the QuantParams 
+        # the per-token activation quantization has token-wise quant_params
+        # ----- ImageNet 256x256 -------
+        # latent_size: 256//8 = 32
+        # patch_emb: 2x2
+        # token_len = 16x16=256
+        # ----- PixArt 512x512 -------
+        # latent_size: 1024//8 = 128
+        # patch_emb: 2x2
+        # token_len = 64x64 = 4096
+        # ----- OpenSORA  -------
+        # latent_size: TOOD
+        # patch_emb: 2x2
+        # token_len = 64x64 = 4096
+        # ------------------------------
+        input_size = self.config.input_size
+        patch_size = self.config.patch_size
+        num_patch = np.prod([input_size[i] // patch_size[i] for i in range(3)])
+        num_temporal_patch = input_size[0] // patch_size[0]
+        num_spatial_patch = num_patch // num_temporal_patch
+        logger.info('Num Tokens: {}, Spatial Patch {}, Temporal Patch {}'.format(num_patch, num_spatial_patch, num_temporal_patch))
+        
+        seq_len = 2*num_patch # 2*token_len, currently only support batch_size=1
+        self.quant_params = QuantParams(seq_len, has_sum_input=True, device=torch.device("cuda"))
+
+        # (2) replace the blocks, with cuda kernel version        
+        n_block = len(self.spatial_blocks)
+        for i_block in range(n_block):      
+            
+            old_block = self.spatial_blocks[i_block]
+            # DEBUG_ONLY: replace some layer as old.
+            old_attn = old_block.attn
+            # old_cross_attn = old_block.cross_attn
+            # old_mlp = old_block.mlp
+            # old_attn_proj =  old_block.attn.proj
+            
+            self.spatial_blocks[i_block] = STDiT3BlockWithCudaKernel(
+                    hidden_size=old_block.hidden_size,
+                    num_heads=old_block.attn.num_heads,
+                    qk_norm=True,
+                    temporal=False,
+                    rope=old_block.rotary_emb if hasattr(old_block, 'rotary_emb') else None,
+                    quant_params=self.quant_params,
+                ).half().to('cuda')
+
+            # DEBUG_ONLY: replace some layer as old.
+            self.spatial_blocks[i_block].attn = old_attn
+            # self.spatial_blocks[i_block].cross_attn = old_cross_attn
+            # self.spatial_blocks[i_block].mlp = old_mlp
+            # self.spatial_blocks[i_block].attn.proj = old_attn_proj
+      
+            old_block = self.temporal_blocks[i_block]    
+            # DEBUG_ONLY: replace some layer as old.
+            old_attn = old_block.attn
+            # old_cross_attn = old_block.cross_attn
+            # old_mlp = old_block.mlp
+            # old_attn_proj =  old_block.attn.proj
+
+            self.temporal_blocks[i_block] = STDiT3BlockWithCudaKernel(
+                    hidden_size=old_block.hidden_size,
+                    num_heads=old_block.attn.num_heads,
+                    qk_norm=True,
+                    temporal=True,
+                    rope=old_block.rotary_emb if hasattr(old_block, 'rotary_emb') else None,
+                    quant_params=self.quant_params,
+                ).half().to('cuda')
+            
+            # DEBUG_ONLY: replace some layer as old.
+            self.temporal_blocks[i_block].attn = old_attn
+            # self.temporal_blocks[i_block].cross_attn = old_cross_attn
+            # self.temporal_blocks[i_block].mlp = old_mlp
+            # self.temporal_blocks[i_block].attn.proj = old_attn_proj
+            
+            setattr(self.spatial_blocks[i_block],'block_id',i_block)
+            setattr(self.temporal_blocks[i_block],'block_id',i_block)
+
+        # (3) load the integer weights
+        quant_sd = torch.load(load_path, weights_only=True, map_location='cuda')
+        self.load_state_dict(quant_sd, strict=False)
+
+    # ------------------------------------------------------------------------------------
+        
 # -------------- for quant attention -----------
 
 def quant_attn_refactor_(submodule,name,parent_module,quant_config,full_name,remain_fp_regex,class_type=None):
@@ -159,6 +299,8 @@ def quant_attn_refactor_(submodule,name,parent_module,quant_config,full_name,rem
     setattr(getattr(parent_module, name), 'module_name', full_name)
     if getattr(parent_module, name).attn_map_quantizer is not None:
         setattr(getattr(parent_module, name).attn_map_quantizer, 'module_name', full_name)
+        if hasattr(getattr(parent_module, name).attn_map_quantizer, 'attn_map_quantizer'):
+            setattr(getattr(parent_module, name).attn_map_quantizer.attn_map_quantizer, 'module_name', full_name) # DIRTY: this is the actual `DynamicQuantizer`
     
 def quant_cross_attn_refactor_(submodule,name,parent_module,quant_config,full_name,remain_fp_regex,class_type=None):
     
@@ -190,6 +332,9 @@ def quant_cross_attn_refactor_(submodule,name,parent_module,quant_config,full_na
     setattr(getattr(parent_module, name), 'module_name', full_name)
     if getattr(parent_module, name).attn_map_quantizer is not None:
         setattr(getattr(parent_module, name).attn_map_quantizer, 'module_name', full_name)
+        if hasattr(getattr(parent_module, name).attn_map_quantizer, 'attn_map_quantizer'):
+            setattr(getattr(parent_module, name).attn_map_quantizer.attn_map_quantizer, 'module_name', full_name) # DIRTY: this is the actual `DynamicQuantizer`
+            
 
 class QuantizedAttention(nn.Module):
     def __init__(

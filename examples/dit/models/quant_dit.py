@@ -317,7 +317,7 @@ class QuantDiT(DiT):
         from viditq_extension.nn.base import QuantParams
 
         # (1) Set the seq_len to init the QuantParams 
-        # the per-token activation quantization has tokrn-wise quant_params
+        # the per-token activation quantization has token-wise quant_params
         # ----- ImageNet 256x256 -------
         # latent_size: 256//8 = 32
         # patch_emb: 2x2

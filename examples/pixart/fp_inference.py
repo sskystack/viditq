@@ -25,13 +25,13 @@ def main(args):
     ckpt_path = args.ckpt if args.ckpt is not None else "./pretrained_models/"
     pipe = PixArtSigmaPipeline.from_pretrained(
         ckpt_path,
-        torch_dtype=torch.bfloat16
+        torch_dtype=torch.float16  # due to CUDA kernel only supports fp16, we donot use bfloat16 here. 
     ).to(device)
 
     # INFO: if memory intense
     # pipe.enable_model_cpu_offload()
     # pipe.vae.enable_tiling()
-
+    
     # read the promts
     prompt_path = args.prompt if args.prompt is not None else "./prompts.txt"
     prompts = []
@@ -54,7 +54,8 @@ def main(args):
 
         for i_image in range(args.batch_size):
             images[i_image].save(os.path.join(save_path, f"output_{i_image + args.batch_size*i}.jpg"))
-
+            
+            
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--log", type=str)
@@ -62,7 +63,7 @@ if __name__ == "__main__":
     parser.add_argument("--num-sampling-steps", type=int, default=10)
     parser.add_argument("--prompt", type=str, default=None)
     parser.add_argument("--seed", type=int, default=42)
-    parser.add_argument("--batch-size", type=int, default=4)
+    parser.add_argument("--batch-size", type=int, default=1)
     parser.add_argument("--ckpt", type=str, default=None)
     args = parser.parse_args()
     main(args)
