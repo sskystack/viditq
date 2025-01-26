@@ -112,13 +112,13 @@ def main():
                         num_heads=16, 
                         qk_norm=True,
                         enable_flash_attn=True,
-                        enable_layernorm_kernel=True,  # no apex included
+                        enable_layernorm_kernel=False,  # no apex included
                         input_size=latent_size,
                         in_channels=vae.out_channels,
                         caption_channels=text_encoder.output_dim if not precompute_text_embeds else 4096,
                         model_max_length=text_encoder.model_max_length if not precompute_text_embeds else 300,
                         enable_sequence_parallelism=enable_sequence_parallelism)
-    model_from_pretrained="/home/zhaotianchen/models/hpcai-tech/OpenSora-STDiT-v3"  # DIRTY
+    model_from_pretrained=os.path.join(cfg.model_path, "hpcai-tech/OpenSora-STDiT-v3")
     model=(QuantOpenSora(quant_config,config,model_from_pretrained).to(device, dtype).eval())  
     model.config = config  # INFO: add the config as model attribute, used in hardware_refactor
     if not precompute_text_embeds:
@@ -170,6 +170,7 @@ def main():
             prompts = load_prompts(cfg.prompt_path, start_idx, cfg.get("end_index", None))
         else:
             prompts = [cfg.get("prompt_generator", "")] * 1_000_000  # endless loop
+            import ipdb; ipdb.set_trace()
     
     # == prepare reference ==
     reference_path = cfg.get("reference_path", [""] * len(prompts))
@@ -193,7 +194,7 @@ def main():
     sample_name = cfg.get("sample_name", None)
     prompt_as_path = cfg.get("prompt_as_path", False)
 
-        # == Iter over all samples ==
+    # == Iter over all samples ==
     for i in progress_wrap(range(0, len(prompts), batch_size)):
         # == prepare batch prompts ==
         batch_prompts = prompts[i : i + batch_size]

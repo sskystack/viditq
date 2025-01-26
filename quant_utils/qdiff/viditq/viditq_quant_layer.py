@@ -57,17 +57,18 @@ class ViDiTQuantizedLinear(QuantizedLinear):
             return self.fp_module(x, *args, **kwargs)
         else:
             # reshape X into [G, -1] 
+            dtype_ = x.dtype
             B, N_token, C = x.shape
             x = x*self.channel_mask.reshape([1,1,C])  # first process through scale
-            x = torch.matmul(x.double(), self.rotation_matrix).to(dtype=x.dtype)  # then rotate
+            x = torch.matmul(x.double(), self.rotation_matrix).to(dtype=dtype_)  # then rotate
             x = x.reshape([B*N_token,-1])
 
-            # quantize activation
+            # quantize activationq
             x = self.a_quantizer(x)
             x = x.reshape([B, N_token, C])
 
             # forward with dequantized weight and activation
-            y = F.linear(x, self.weight.to(x.dtype), self.bias, *args, **kwargs)
+            y = F.linear(x, self.weight.to(dtype=dtype_), self.bias, *args, **kwargs)
 
             return y
 

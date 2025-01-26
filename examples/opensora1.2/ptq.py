@@ -110,13 +110,13 @@ def main():
                         num_heads=16, 
                         qk_norm=True,
                         enable_flash_attn=True,
-                        enable_layernorm_kernel=True,  # no apex included
+                        enable_layernorm_kernel=False,  # no apex included
                         input_size=latent_size,
                         in_channels=vae.out_channels,
                         caption_channels=text_encoder.output_dim if not precompute_text_embeds else 4096,
                         model_max_length=text_encoder.model_max_length if not precompute_text_embeds else 300,
                         enable_sequence_parallelism=enable_sequence_parallelism)
-    model_from_pretrained="/home/zhaotianchen/models/hpcai-tech/OpenSora-STDiT-v3"  # DIRTY
+    model_from_pretrained=os.path.join(cfg.model_path, "hpcai-tech/OpenSora-STDiT-v3")
     model=(QuantOpenSora(quant_config,config,model_from_pretrained).to(device, dtype).eval())  
     if not precompute_text_embeds:
         text_encoder.y_embedder = model.y_embedder  # HACK: for classifier-free guidance

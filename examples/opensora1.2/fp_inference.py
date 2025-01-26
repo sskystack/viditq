@@ -78,7 +78,7 @@ def main():
     
     # INFO: precompute the text embeds to avoid loading the T5 repeatedly
     precompute_text_embeds = cfg.get("precompute_text_embeds", False)
-    assert precompute_text_embeds # DEBUG_ONLY
+    # assert precompute_text_embeds # DEBUG_ONLY
 
     # ======================================================
     # build model & load weights

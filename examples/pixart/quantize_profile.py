@@ -28,17 +28,15 @@ def main(args):
     log_file = os.path.join(args.log, 'run.log')
     setup_logging(log_file)
     logger = logging.getLogger(__name__)
-
-    ckpt_path = args.ckpt if args.ckpt is not None else "./pretrained_models/"
     
     # INFO: donot convert_quant to acquire the original pipeline. 
     fp_pipe = PixArtSigmaPipeline.from_pretrained(
-        ckpt_path,
+        "PixArt-alpha/PixArt-Sigma-XL-2-1024-MS",
         torch_dtype=torch.float16  # due to CUDA kernel only supports fp16, we donot use bfloat16 here. 
     ).to(device)
       
     quant_pipe = PixArtSigmaPipeline.from_pretrained(
-        ckpt_path,
+        "PixArt-alpha/PixArt-Sigma-XL-2-1024-MS",
         torch_dtype=torch.float16  # due to CUDA kernel only supports fp16, we donot use bfloat16 here. 
     ).to(device)
     

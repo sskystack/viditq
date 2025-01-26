@@ -118,7 +118,7 @@ class DynamicQuantizer(BaseQuantizer):
             delta = x_absmax / self.n_levels
             zero_point = torch.zeros_like(delta, device=delta.device)
             
-            eps = 1.e-4
+            eps = 1.e-6
             try:
                 assert torch.all(delta.abs() > eps)
             except:

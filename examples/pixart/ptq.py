@@ -37,9 +37,8 @@ def main(args):
         shutil.rmtree(os.path.join(args.log,'models'))
     shutil.copytree('./models', os.path.join(args.log,'models'))
 
-    ckpt_path = args.ckpt if args.ckpt is not None else "./pretrained_models/"
     pipe = PixArtSigmaPipeline.from_pretrained(
-        ckpt_path,
+        "PixArt-alpha/PixArt-Sigma-XL-2-1024-MS",
         torch_dtype=torch.bfloat16
     ).to(device)
     

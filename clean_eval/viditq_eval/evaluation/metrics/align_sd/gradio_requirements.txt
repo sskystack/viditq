@@ -1,7 +1,0 @@
-torch
-diffusers
-gradio
-transformers 
-scipy 
-ftfy 
-accelerate

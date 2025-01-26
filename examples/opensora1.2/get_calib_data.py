@@ -150,7 +150,6 @@ def main():
         text_encoder = build_module(cfg.text_encoder, MODELS, device=device)
     vae = build_module(cfg.vae, MODELS).to(device, dtype).eval()
 
-
     # == prepare video size ==
     image_size = cfg.get("image_size", None)
     if image_size is None:
@@ -171,8 +170,8 @@ def main():
     INFO: modify the quant config to skip all quantization
     use the quant_model only for the apply_hook funcs
     '''
-    # quant_config.weight = None
-    # quant_config.act = None
+    quant_config.weight = None
+    quant_config.act = None
     # quant_config.attn.qk = None
     # quant_config.attn.v = None
     # quant_config.attn.attn_map = None
@@ -182,20 +181,33 @@ def main():
 
     input_size = (num_frames, *image_size)
     latent_size = vae.get_latent_size(input_size)
-    config = STDiT3Config(depth=28, 
-                        hidden_size=1152, 
-                        patch_size=(1, 2, 2), 
-                        num_heads=16, 
-                        qk_norm=True,
-                        enable_flash_attn=True,
-                        enable_layernorm_kernel=True,  # no apex included
-                        input_size=latent_size,
-                        in_channels=vae.out_channels,
-                        caption_channels=text_encoder.output_dim if not precompute_text_embeds else 4096,
-                        model_max_length=text_encoder.model_max_length if not precompute_text_embeds else 300,
-                        enable_sequence_parallelism=enable_sequence_parallelism)
-    model_from_pretrained="/home/zhaotianchen/models/hpcai-tech/OpenSora-STDiT-v3"  # DIRTY
-    model=(QuantOpenSora(quant_config,config,model_from_pretrained).to(device, dtype).eval())  
+    model = (
+        build_module(
+                cfg.model,
+                MODELS,
+                input_size=latent_size,
+                in_channels=vae.out_channels,
+                caption_channels=text_encoder.output_dim if not precompute_text_embeds else 4096,  # DIRTY FIX
+                model_max_length=text_encoder.model_max_length if not precompute_text_embeds else 300,
+                enable_sequence_parallelism=enable_sequence_parallelism,
+            )
+            .to(device, dtype)
+            .eval()
+    )
+    # config = STDiT3Config(depth=28, 
+    #                     hidden_size=1152, 
+    #                     patch_size=(1, 2, 2), 
+    #                     num_heads=16, 
+    #                     qk_norm=True,
+    #                     enable_flash_attn=True,
+    #                     enable_layernorm_kernel=False,  # no apex included
+    #                     input_size=latent_size,
+    #                     in_channels=vae.out_channels,
+    #                     caption_channels=text_encoder.output_dim if not precompute_text_embeds else 4096,
+    #                     model_max_length=text_encoder.model_max_length if not precompute_text_embeds else 300,
+    #                     enable_sequence_parallelism=enable_sequence_parallelism)
+    # model_from_pretrained=os.path.join(cfg.model_path, "hpcai-tech/OpenSora-STDiT-v3")
+    # model=(QuantOpenSora(quant_config,config,model_from_pretrained).to(device, dtype).eval())  
     if not precompute_text_embeds:
         text_encoder.y_embedder = model.y_embedder  # HACK: for classifier-free guidance
 
@@ -207,7 +219,7 @@ def main():
     '''
     # quant_param_ckpt = torch.load(os.path.join(cfg.save_dir,"./quant_params.pth"), weights_only=True)
     # model.load_quant_param_dict(quant_param_ckpt)
-    model.set_init_done()
+    # model.set_init_done()
 
     logger.info(str(model))
     
@@ -230,8 +242,7 @@ def main():
     '''
     INFO: set the Attention module `apply_hook` as True
     '''
-    # for i_, spatial_block_ in enumerate(model.spatial_blocks):
-        
+    # for i_, spatial_block_ in enumerate(model.spatial_blocks):  
     #     module_ = spatial_block_.cross_attn
     #     module_.apply_hooks = True
     #     module_.hooks = {}
