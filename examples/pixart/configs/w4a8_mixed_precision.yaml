@@ -2,16 +2,11 @@ model:
     model_id: "pixart"
     model_type: 'pixart'  # ['sd','sdxl']
 remain_fp_regex: embed|norm_out|proj_out|adaln_single|caption_projection
-# quarot:
-#   layer_name_regex: mlp
 mixed_precision:  # the unmentioned layers are remained the main bitwidth (n_bits[i_bitwidth])
   weight:
     layer_name_regex: ['embed|norm_out|proj_out|adaln_single|caption_projection','','','blocks\.0|ff|blocks\.27']  # [FP, [n_bits]]
   act:
     layer_name_regex: ['embed|norm_out|proj_out|adaln_single|caption_projection','','','']
-# smooth_quant:
-#   alpha: 0.8
-#   layer_name_regex: cross_attn.q_linear
 viditq:
   alpha: 0.99
   layer_name_regex: attn|ff

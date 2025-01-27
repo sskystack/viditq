@@ -5,9 +5,6 @@ calib_data:
   save_path: ./calib_data.pth
 quarot:
   layer_name_regex: ff.net|to_v|to_k|to_q
-#smooth_quant:
-  #alpha: 0.99
-  #layer_name_regex: ff.net.0
 weight:
   n_bits: [4,8]
   i_bitwidth: 1

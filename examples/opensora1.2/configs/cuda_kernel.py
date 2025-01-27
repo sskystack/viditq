@@ -9,13 +9,12 @@ save_dir = "./logs/cuda_kernel_test"
 seed = 42
 batch_size = 1
 multi_resolution = "STDiT2"
-dtype = "fp16"  # when using cuda kernel, we cannot use the original bf16
+dtype = "fp16"  # when using cuda kernel, we cannot use the bf16
 condition_frame_length = 5
 align = 5
 
 model = dict(
     type="STDiT3-XL/2",
-    # from_pretrained="/share/public/zhuhongyu/hpcai-tech/OpenSora-STDiT-v3",
     from_pretrained="/home/models/hpcai-tech/OpenSora-STDiT-v3",
     qk_norm=True,
     enable_flash_attn=True,
@@ -23,7 +22,6 @@ model = dict(
 )
 vae = dict(
     type="OpenSoraVAE_V1_2",
-    # from_pretrained="/share/public/zhuhongyu/hpcai-tech/OpenSora-VAE-v1.2",
     from_pretrained="/home/models/hpcai-tech/OpenSora-VAE-v1.2",
     micro_frame_size=17,
     micro_batch_size=4,

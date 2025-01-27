@@ -172,12 +172,6 @@ def main():
     '''
     quant_config.weight = None
     quant_config.act = None
-    # quant_config.attn.qk = None
-    # quant_config.attn.v = None
-    # quant_config.attn.attn_map = None
-    # quant_config.cross_attn.qk = None
-    # quant_config.cross_attn.v = None
-    # quant_config.cross_attn.attn_map = None
 
     input_size = (num_frames, *image_size)
     latent_size = vae.get_latent_size(input_size)
@@ -193,21 +187,7 @@ def main():
             )
             .to(device, dtype)
             .eval()
-    )
-    # config = STDiT3Config(depth=28, 
-    #                     hidden_size=1152, 
-    #                     patch_size=(1, 2, 2), 
-    #                     num_heads=16, 
-    #                     qk_norm=True,
-    #                     enable_flash_attn=True,
-    #                     enable_layernorm_kernel=False,  # no apex included
-    #                     input_size=latent_size,
-    #                     in_channels=vae.out_channels,
-    #                     caption_channels=text_encoder.output_dim if not precompute_text_embeds else 4096,
-    #                     model_max_length=text_encoder.model_max_length if not precompute_text_embeds else 300,
-    #                     enable_sequence_parallelism=enable_sequence_parallelism)
-    # model_from_pretrained=os.path.join(cfg.model_path, "hpcai-tech/OpenSora-STDiT-v3")
-    # model=(QuantOpenSora(quant_config,config,model_from_pretrained).to(device, dtype).eval())  
+    )  
     if not precompute_text_embeds:
         text_encoder.y_embedder = model.y_embedder  # HACK: for classifier-free guidance
 
@@ -239,33 +219,7 @@ def main():
                             return_d={},
                             **kwargs
                             )
-    '''
-    INFO: set the Attention module `apply_hook` as True
-    '''
-    # for i_, spatial_block_ in enumerate(model.spatial_blocks):  
-    #     module_ = spatial_block_.cross_attn
-    #     module_.apply_hooks = True
-    #     module_.hooks = {}
-    #     # add hooks
-    #     module_.hooks['q'] = add_hook_to_module_(module_.q_quantizer, SaveActivationHook, type='qk')
-    #     module_.hooks['k'] = add_hook_to_module_(module_.k_quantizer, SaveActivationHook, type='qk')
-    #     module_.hooks['v'] = add_hook_to_module_(module_.v_quantizer, SaveActivationHook, type='v')
-    #     module_.hooks['attn_map'] = add_hook_to_module_(module_.attn_map_quantizer, SaveActivationHook, type='cross_attn')  
-
-    # for i_, temporal_block_ in enumerate(model.temporal_blocks):
-    #     temporal_block_.cross_attn.apply_hooks = True
-    #     temporal_block_.cross_attn.hooks = True
-        
-    #     module_ = temporal_block_.cross_attn
-    #     module_.apply_hooks = True
-    #     module_.hooks = {}
-    #     # add hooks
-    #     module_.hooks['q'] = add_hook_to_module_(module_.q_quantizer, SaveActivationHook, type='qk')
-    #     module_.hooks['k'] = add_hook_to_module_(module_.k_quantizer, SaveActivationHook, type='qk')
-    #     module_.hooks['v'] = add_hook_to_module_(module_.v_quantizer, SaveActivationHook, type='v')
-    #     module_.hooks['attn_map'] = add_hook_to_module_(module_.attn_map_quantizer, SaveActivationHook, type='cross_attn')  
-    # ------------ Add the Hooks for Calib Data --------------
-    
+  
     # ======================================================
     # inference
     # ======================================================
@@ -466,18 +420,6 @@ def main():
         v.hook_handle.remove()
 
     torch.save(save_d, quant_config.calib_data.save_path)
-    # save_d = {}
-    # block_ids = [1,2]  # None means all blocks
-    
-    # for i_, spatial_block_ in enumerate([model.spatial_blocks[block_id] for block_id in block_ids]):
-    #     for k_ in spatial_block_.cross_attn.hooks.keys():
-    #         save_d['spatial_block{}_cross_attn_{}'.format(i_,k_)] = torch.stack(spatial_block_.cross_attn.hooks[k_].outputs, dim=0) # [N_iter, x_shpae]
-    
-    # for i_, temporal_block_ in enumerate([model.temporal_blocks[block_id] for block_id in block_ids]):
-    #     for k_ in temporal_block_.cross_attn.hooks.keys():
-    #         save_d['temporal_block{}_cross_attn_{}'.format(i_,k_)] = torch.stack(temporal_block_.cross_attn.hooks[k_].outputs, dim=0) # [N_iter, x_shpae]
-            
-    # torch.save(save_d, './visualization/cross_attn_acts.pth')
 
 if __name__ == "__main__":
     main()

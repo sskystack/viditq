@@ -9,7 +9,7 @@ save_dir = "./logs/software_simulation_mp"
 seed = 42
 batch_size = 1
 multi_resolution = "STDiT2"
-dtype = "fp16"  # when using cuda kernel, we cannot use the original bf16
+dtype = "fp16"  # when using cuda kernel, we cannot use the bf16
 condition_frame_length = 5
 align = 5
 

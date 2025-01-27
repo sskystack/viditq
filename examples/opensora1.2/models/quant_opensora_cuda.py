@@ -193,16 +193,6 @@ class STDiT3BlockWithCudaKernel(nn.Module):
             x = fused_kernels.gate_residual_fuse(x_m.view(-1, C), gate_msa.view(-1, C), residual.contiguous().view(-1, C)).reshape([B, N, C])
         else:
             x_m = t2i_modulate(self.norm1(x), shift_msa, scale_msa)
-            # INFO: full mask, could be skipped, verified with the assertion
-            # if x_mask is not None:
-            #     x_m_ = x_m.clone()
-            #     try:
-            #         assert (x_mask == False).sum() == 0  # assert always full mask, could just pass.
-            #     except:
-            #         import ipdb; ipdb.set_trace()
-            #     x_m_zero = t2i_modulate(self.norm1(x), shift_msa_zero, scale_msa_zero)
-            #     x_m = self.t_mask_select(x_mask, x_m, x_m_zero, T, S)
-            #     assert (x_m != x_m_).sum() == 0
             if self.temporal:
                 x_m = rearrange(x_m, "B (T S) C -> (B S) T C", T=T, S=S)
                 x_m = self.attn(x_m)
@@ -212,10 +202,6 @@ class STDiT3BlockWithCudaKernel(nn.Module):
                 x_m = self.attn(x_m)
                 x_m = rearrange(x_m, "(B T) S C -> B (T S) C", T=T, S=S)
             x_m_s = gate_msa * x_m
-            # if x_mask is not None:
-            #     x_m_s_zero = gate_msa_zero * x_m
-            #     x_m_s = self.t_mask_select(x_mask, x_m_s, x_m_s_zero, T, S)
-            # residual
             x = x + self.drop_path(x_m_s)
 
         # cross attention
@@ -237,19 +223,10 @@ class STDiT3BlockWithCudaKernel(nn.Module):
         else:
             # modulate (MLP)
             x_m = t2i_modulate(self.norm2(x), shift_mlp, scale_mlp)
-            # if x_mask is not None:
-            #     x_m_zero = t2i_modulate(self.norm2(x), shift_mlp_zero, scale_mlp_zero)
-            #     x_m = self.t_mask_select(x_mask, x_m, x_m_zero, T, S)
-
             # MLP
             x_m = self.mlp(x_m)
-
             # modulate (MLP)
             x_m_s = gate_mlp * x_m
-            # if x_mask is not None:
-            #     x_m_s_zero = gate_mlp_zero * x_m
-            #     x_m_s = self.t_mask_select(x_mask, x_m_s, x_m_s_zero, T, S)
-
             # residual
             x = x + self.drop_path(x_m_s)
 
@@ -368,13 +345,6 @@ class MultiHeadCrossAttentionWithCudaKernel(nn.Module):
         self.num_heads = num_heads
         self.head_dim = d_model // num_heads
 
-        # self.q_linear = nn.Linear(d_model, d_model)
-        # self.kv_linear = nn.Linear(d_model, d_model * 2)
-        # self.attn_drop = nn.Dropout(attn_drop)
-        # self.proj = nn.Linear(d_model, d_model)
-        # self.proj_drop = nn.Dropout(proj_drop)
-        
-        # self.q_linear = nn.Linear(d_model, d_model)
         self.q_linear = W8A8OF16LinearDynamicInputScale(d_model, d_model, has_bias=has_bias, weight_sym=weight_sym)
         self.kv_linear = nn.Linear(d_model, d_model * 2)
         self.proj = W8A8OF16LinearDynamicInputScale(d_model, d_model, has_bias=has_bias, weight_sym=weight_sym)
@@ -421,31 +391,13 @@ class MlpWithCudaKernel(nn.Module):
         out_features = out_features or in_features
         hidden_features = hidden_features or in_features
         bias = to_2tuple(bias)
-        # drop_probs = to_2tuple(drop)
-        # linear_layer = partial(nn.Conv2d, kernel_size=1) if use_conv else nn.Linear
         
         self.fc1 = W8A8OF16LinearDynamicInputScale(in_features, hidden_features, has_bias=bias[0], weight_sym=weight_sym)
         self.fc2 = W8A8OF16LinearDynamicInputScale(hidden_features, in_features, has_bias=bias[1], weight_sym=weight_sym)
         self.quant_params = quant_params
-
-        # self.fc1 = linear_layer(in_features, hidden_features, bias=bias[0])
-        # self.act = act_layer()
-        # self.drop1 = nn.Dropout(drop_probs[0])
-        # self.norm = norm_layer(hidden_features) if norm_layer is not None else nn.Identity()
-        # self.fc2 = linear_layer(hidden_features, out_features, bias=bias[1])
-        # self.drop2 = nn.Dropout(drop_probs[1])
-
 
     def forward(self, x):
         x = self.fc1(x, self.quant_params)
         x = fused_kernels.gelu_quant_sum(x, self.quant_params.sum_input, self.quant_params.scale_input)
         x = self.fc2(x, self.quant_params)
         return x
-        
-        # x = self.fc1(x)
-        # x = self.act(x)
-        # x = self.drop1(x)
-        # x = self.norm(x)
-        # x = self.fc2(x)
-        # x = self.drop2(x)
-        # return x
