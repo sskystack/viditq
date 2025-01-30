@@ -38,6 +38,11 @@ We introduce ViDiT-Q, a quantization method specialized for diffusion transforme
 |[<img src="assets/teaser/teaser_fp_1.jpg" width="">]()|[<img src="assets/teaser/teaser_viditq_1.jpg" width="">]()|[<img src="assets/teaser/teaser_viditq_int4_1.jpg" width="">]()|
 |[<img src="assets/teaser/teaser_fp_2.jpg" width="">]()|[<img src="assets/teaser/teaser_viditq_2.jpg" width="">]()|[<img src="assets/teaser/teaser_viditq_int4_2.jpg" width="">]()|
 
+---
+
+With our [implemented CUDA kernels](./kernels/README.md), the ViDiT-Q quantization could achieve practical resource savings on various GPU plarforms. 
+
+[<img src="assets/teaser/vidtq_hardware_demo.jpg" width="">]()
 
 For more examples, please refer to our [Project Page: https://a-suozhang.xyz/viditq.github.io/](https://a-suozhang.xyz/viditq.github.io/)
 
