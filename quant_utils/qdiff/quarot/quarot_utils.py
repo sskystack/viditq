@@ -259,7 +259,7 @@ def is_pow2(n):
 
 
 def get_had144():
-    d = torch.load('/home/zhaotianchen/project/viditq/ViDiT-Q/t2v/scripts/hadamard_utils/hadamard_mat.pth', weights_only=True)
+    d = torch.load('./hadamard_utils/hadamard_mat.pth', weights_only=True)
     x = d['had.144.tpal']
     return x
 
