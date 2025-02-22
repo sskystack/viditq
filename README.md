@@ -105,7 +105,7 @@ Generate the videos with FP16 precision with prompts specifed with `--prompt_pat
 
 ``` bash
 python fp_inference.py configs/software_simulation.py \
-  --prompt-path ./prompts.txt
+  --prompt-path ./assets/prompts.txt
 ```
 
 ---
@@ -124,7 +124,7 @@ Some quantization techniques (e.g., smooth quant) requires calibration of activa
 
 ``` bash
 python get_calib_data.py configs/software_simulation.py \
- --prompt-path ./t2v_samples.txt
+ --prompt-path ./assets/t2v_samples.txt
 ```
 
 ### 1.2 Post Training Quantization (PTQ) Process
