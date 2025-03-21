@@ -199,6 +199,8 @@ python get_calib_data.py --quant-config "./configs/${CFG}" --log "./logs/${LOG}"
 
 ### 1.2 Post Training Quantization (PTQ) Process
 
+- replace the `software_simulation.py` with `w4a8_mixed_precision.yaml` or `w4a8_mixed_precision.yaml`. 
+
 ``` bash
 python ptq.py configs/software_simulation.py --save-dir "./logs/w4a8_mp" 
 ```
@@ -214,6 +216,10 @@ python quant_inference.py --quant-config "./configs/${CFG}" --log "./logs/${LOG}
 ``` bash
 python quant_inference.py --quant-config "./configs/${CFG}" --log "./logs/${LOG}" --hardware
 ```
+
+# Eval
+
+- Please refer to the [eval/video/readme.md](eval/video/readme.md), [eval/image/readme.md](./eval/image/readme.md)
 
 # Citation
 
