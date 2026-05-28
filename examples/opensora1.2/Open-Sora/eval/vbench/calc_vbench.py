@@ -40,6 +40,8 @@ def parse_args():
     parser.add_argument("model_ckpt", type=str)
     parser.add_argument("--start", type=int, default=0)  # start index of dimension to be evaluated
     parser.add_argument("--end", type=int, default=-1)  # start index of dimension to be evaluated
+    parser.add_argument("--dimensions", nargs="+", default=None, help="Specific VBench dimensions to evaluate")
+    parser.add_argument("--local", action="store_true", help="Use local cached VBench metric models")
 
     args = parser.parse_args()
     return args
@@ -58,13 +60,16 @@ if __name__ == "__main__":
 
     # NOTE: important to use torch.device("cuda"), else will have issue with object_class third_party module
     my_VBench = VBench(torch.device("cuda"), full_info_path, output_dir)
-    if args.end == -1:  # adjust end accordingly
-        args.end = len(dimensions)
-    for dim in dimensions[args.start : args.end]:
+    selected_dimensions = args.dimensions
+    if selected_dimensions is None:
+        if args.end == -1:  # adjust end accordingly
+            args.end = len(dimensions)
+        selected_dimensions = dimensions[args.start : args.end]
+    for dim in selected_dimensions:
         my_VBench.evaluate(
             videos_path=video_path,
             name=dim,
-            local=False,
+            local=args.local,
             read_frame=False,
             dimension_list=[dim],
             mode="vbench_standard",

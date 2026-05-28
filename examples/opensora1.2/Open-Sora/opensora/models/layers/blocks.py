@@ -187,6 +187,7 @@ class Attention(nn.Module):
                 q = self.rotary_emb(q)
                 k = self.rotary_emb(k)
 
+        use_mem_eff_attn = False
         if enable_flash_attn:
             from flash_attn import flash_attn_func
 
@@ -202,6 +203,19 @@ class Attention(nn.Module):
                 softmax_scale=self.scale,
                 causal=self.is_causal,
             )
+        elif not self.is_causal:
+            # Avoid materializing the full [B, heads, N, N] attention matrix.
+            q = q.permute(0, 2, 1, 3)
+            k = k.permute(0, 2, 1, 3)
+            v = v.permute(0, 2, 1, 3)
+            x = xformers.ops.memory_efficient_attention(
+                q,
+                k,
+                v,
+                p=self.attn_drop.p if self.training else 0.0,
+                scale=self.scale,
+            )
+            use_mem_eff_attn = True
         else:
             dtype = q.dtype
             q = q * self.scale
@@ -217,7 +231,7 @@ class Attention(nn.Module):
             x = attn @ v
 
         x_output_shape = (B, N, C)
-        if not enable_flash_attn:
+        if not enable_flash_attn and not use_mem_eff_attn:
             x = x.transpose(1, 2)
         x = x.reshape(x_output_shape)
         x = self.proj(x)

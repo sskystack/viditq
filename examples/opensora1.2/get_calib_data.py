@@ -38,6 +38,7 @@ from opensora.utils.inference_utils import (
 from opensora.utils.misc import all_exists, create_logger, is_distributed, is_main_process, to_torch_dtype
 from qdiff.utils import apply_func_to_submodules, seed_everything
 from qdiff.base.quant_layer import QuantizedLinear
+from text_embed_utils import load_precomputed_text_embeds
 
 class SaveActivationHook:
 
@@ -140,6 +141,11 @@ def main():
     # INFO: precompute the text embeds to avoid loading the T5 repeatedly
     precompute_text_embeds = cfg.get("precompute_text_embeds", False)
     #assert precompute_text_embeds # DEBUG_ONLY
+    precomputed_text_embeds = None
+    if precompute_text_embeds:
+        precomputed_text_embeds = load_precomputed_text_embeds(
+            cfg.get("precomputed_text_embeds_path", "./precomputed_text_embeds.pth")
+        )
 
     # ======================================================
     # build model & load weights
@@ -385,6 +391,7 @@ def main():
                     progress=verbose >= 2,
                     mask=masks,
                     precompute_text_embeds=precompute_text_embeds,
+                    precomputed_text_embeds=precomputed_text_embeds,
                 )
                 samples = vae.decode(samples.to(dtype), num_frames=num_frames)
                 video_clips.append(samples)

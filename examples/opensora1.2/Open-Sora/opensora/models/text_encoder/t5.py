@@ -142,6 +142,8 @@ class T5Encoder:
         cache_dir=None,
         shardformer=False,
         local_files_only=False,
+        t5_model_kwargs=None,
+        use_offload_folder=None,
     ):
         assert from_pretrained is not None, "Please specify the path to the T5 model"
 
@@ -152,8 +154,11 @@ class T5Encoder:
             cache_dir=cache_dir,
             model_max_length=model_max_length,
             local_files_only=local_files_only,
+            t5_model_kwargs=t5_model_kwargs,
+            use_offload_folder=use_offload_folder,
         )
-        self.t5.model.to(dtype=dtype)
+        if t5_model_kwargs is None or "device_map" not in t5_model_kwargs:
+            self.t5.model.to(dtype=dtype)
         self.y_embedder = None
 
         self.model_max_length = model_max_length

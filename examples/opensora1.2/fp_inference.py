@@ -33,6 +33,7 @@ from opensora.utils.inference_utils import (
 )
 from opensora.utils.misc import all_exists, create_logger, is_distributed, is_main_process, to_torch_dtype
 from qdiff.utils import apply_func_to_submodules, seed_everything
+from text_embed_utils import load_precomputed_text_embeds
 
 
 def main():
@@ -79,6 +80,11 @@ def main():
     # INFO: precompute the text embeds to avoid loading the T5 repeatedly
     precompute_text_embeds = cfg.get("precompute_text_embeds", False)
     # assert precompute_text_embeds # DEBUG_ONLY
+    precomputed_text_embeds = None
+    if precompute_text_embeds:
+        precomputed_text_embeds = load_precomputed_text_embeds(
+            cfg.get("precomputed_text_embeds_path", "./precomputed_text_embeds.pth")
+        )
 
     # ======================================================
     # build model & load weights
@@ -155,6 +161,32 @@ def main():
     os.makedirs(save_dir, exist_ok=True)
     sample_name = cfg.get("sample_name", None)
     prompt_as_path = cfg.get("prompt_as_path", False)
+
+    if prompt_as_path:
+        kept_prompts, kept_refs, kept_ms = [], [], []
+        skipped = 0
+        for idx, (prompt, ref, ms_item) in enumerate(zip(prompts, reference_path, mask_strategy)):
+            save_paths = [
+                get_save_path_name(
+                    save_dir,
+                    sample_name=sample_name,
+                    sample_idx=start_idx + idx,
+                    prompt=prompt,
+                    prompt_as_path=prompt_as_path,
+                    num_sample=num_sample,
+                    k=k,
+                )
+                for k in range(num_sample)
+            ]
+            if all_exists(save_paths):
+                skipped += 1
+            else:
+                kept_prompts.append(prompt)
+                kept_refs.append(ref)
+                kept_ms.append(ms_item)
+        if skipped > 0:
+            logger.info("Skipping %s existing samples; %s samples remaining.", skipped, len(kept_prompts))
+        prompts, reference_path, mask_strategy = kept_prompts, kept_refs, kept_ms
 
     # == Iter over all samples ==
     for i in progress_wrap(range(0, len(prompts), batch_size)):
@@ -287,6 +319,7 @@ def main():
                     progress=verbose >= 2,
                     mask=masks,
                     precompute_text_embeds=precompute_text_embeds,
+                    precomputed_text_embeds=precomputed_text_embeds,
                 )
                 samples = vae.decode(samples.to(dtype), num_frames=num_frames)
                 video_clips.append(samples)

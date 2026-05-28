@@ -15,20 +15,22 @@ align = 5
 
 model = dict(
     type="STDiT3-XL/2",
-    from_pretrained="/home/models/hpcai-tech/OpenSora-STDiT-v3",
+    from_pretrained="/root/data-fs/models/hpcai-tech/OpenSora-STDiT-v3",
     qk_norm=True,
-    enable_flash_attn=True,
+    enable_flash_attn=False,
     enable_layernorm_kernel=False,  # didnot install apex
 )
 vae = dict(
     type="OpenSoraVAE_V1_2",
-    from_pretrained="/home/models/hpcai-tech/OpenSora-VAE-v1.2",
+    from_pretrained="/root/data-fs/models/hpcai-tech/OpenSora-VAE-v1.2",
+    vae_2d_from_pretrained="/root/data-fs/models/PixArt-alpha/pixart_sigma_sdxlvae_T5_diffusers",
+    local_files_only=True,
     micro_frame_size=17,
     micro_batch_size=4,
 )
 text_encoder = dict(
     type="t5",
-    from_pretrained="/home/models/DeepFloyd/t5-v1_1-xxl",
+    from_pretrained="/root/data-fs/models/DeepFloyd/t5-v1_1-xxl",
     model_max_length=300,
 )
 scheduler = dict(
@@ -42,7 +44,8 @@ aes = 6.5
 flow = None
 
 precompute_text_embeds = False
-prompt_path="./t2v_samples.txt"
-model_path="/home/models"
+precomputed_text_embeds_path = "./text_embeds/t2v_samples.pth"
+prompt_path="./assets/t2v_samples.txt"
+model_path="/root/data-fs/models"
 hardware = False  # whether use the cuda kernel inference
 # quant_weight_ckpt = None # use the default path for int_weight.pth

@@ -350,7 +350,10 @@ def transpose(x):
 
 
 def all_exists(paths):
-    return all(os.path.exists(path) for path in paths)
+    def exists_with_sample_suffix(path):
+        return os.path.exists(path) or os.path.exists(f"{path}.mp4") or os.path.exists(f"{path}.png")
+
+    return all(exists_with_sample_suffix(path) for path in paths)
 
 
 # ======================================================

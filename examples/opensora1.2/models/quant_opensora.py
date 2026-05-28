@@ -23,7 +23,19 @@ from qdiff.utils import apply_func_to_submodules
 from qdiff.base.quant_model import quant_layer_refactor_, bitwidth_refactor_, load_quant_param_dict_, save_quant_param_dict_, set_init_done_
 from qdiff.base.quant_attn import QuantizedAttentionMapOpenSORA
 
-from models.quant_opensora_cuda import quantize_and_save_weight_, STDiT3BlockWithCudaKernel
+try:
+    from models.quant_opensora_cuda import quantize_and_save_weight_, STDiT3BlockWithCudaKernel
+except ModuleNotFoundError as exc:
+    _CUDA_IMPORT_ERROR = exc
+    STDiT3BlockWithCudaKernel = None
+
+    def quantize_and_save_weight_(*args, **kwargs):
+        raise RuntimeError(
+            "ViDiT-Q CUDA kernel is unavailable. Use hardware=False/software simulation, "
+            "or install viditq_extension on a supported GPU architecture."
+        ) from _CUDA_IMPORT_ERROR
+else:
+    _CUDA_IMPORT_ERROR = None
 
 
 import logging
@@ -151,6 +163,11 @@ class QuantOpenSora(STDiT3):
         logger.info("\nFinished Saving the Quantized Checkpoint...\n")
 
     def hardware_forward_refactor(self, load_path):
+        if STDiT3BlockWithCudaKernel is None:
+            raise RuntimeError(
+                "ViDiT-Q CUDA kernel is unavailable. hardware_forward_refactor requires "
+                "viditq_extension, which is not installed in this environment."
+            ) from _CUDA_IMPORT_ERROR
 
         from viditq_extension.nn.base import QuantParams
 
@@ -601,4 +618,3 @@ class QuantizedMultiHeadCrossAttention(nn.Module):
         x = self.proj(x)
         x = self.proj_drop(x)
         return x
-

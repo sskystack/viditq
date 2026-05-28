@@ -16,8 +16,7 @@ except ImportError:
     BICUBIC = Image.BICUBIC
     BILINEAR = Image.BILINEAR
 
-#CACHE_DIR = os.environ.get('VBENCH_CACHE_DIR')
-CACHE_DIR = "/share/public/video_quant/vm_ckpt"
+CACHE_DIR = os.environ.get("VBENCH_CACHE_DIR", "/root/data-fs/models/vbench")
 if CACHE_DIR is None:
     CACHE_DIR = os.path.join(os.path.expanduser('~'), '.cache', 'vbench')
 

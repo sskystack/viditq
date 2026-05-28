@@ -3,6 +3,38 @@ from tqdm import tqdm
 
 from opensora.registry import SCHEDULERS
 
+
+def _select_precomputed_model_args(precomputed_text_embeds, prompts, model, z):
+    if precomputed_text_embeds is None:
+        precomputed_text_embeds = torch.load("./precomputed_text_embeds.pth", map_location="cpu", weights_only=True)
+
+    text_embeds = precomputed_text_embeds.get("text_embeds")
+    if text_embeds is None:
+        raise KeyError("Precomputed text embed file must contain a 'text_embeds' mapping")
+
+    ys = []
+    masks = []
+    missing_prompts = []
+    for prompt in prompts:
+        item = text_embeds.get(prompt)
+        if item is None:
+            missing_prompts.append(prompt)
+            continue
+        ys.append(item["y"].to(device=z.device, dtype=z.dtype))
+        masks.append(item["mask"].to(device=z.device))
+
+    if missing_prompts:
+        raise KeyError(
+            "Missing precomputed text embeddings for prompts: "
+            + "; ".join(missing_prompts[:3])
+            + (" ..." if len(missing_prompts) > 3 else "")
+        )
+
+    y = torch.cat(ys, dim=0)
+    mask = torch.cat(masks, dim=0)
+    y_null = model.y_embedder.y_embedding[None].repeat(len(prompts), 1, 1)[:, None].to(device=z.device, dtype=z.dtype)
+    return {"y": torch.cat([y, y_null], 0), "mask": mask}
+
 from .rectified_flow import RFlowScheduler, timestep_transform
 
 
@@ -43,6 +75,7 @@ class RFLOW:
         guidance_scale=None,
         progress=True,
         precompute_text_embeds=False,
+        precomputed_text_embeds=None,
     ):
         # if no specific guidance scale is provided, use the default scale when initializing the scheduler
         if guidance_scale is None:
@@ -51,8 +84,9 @@ class RFLOW:
         n = len(prompts)
         
         if precompute_text_embeds:
-            save_d = torch.load('./precomputed_text_embeds.pth', map_location=z.device, weights_only=True)
-            model_args = save_d['model_args']
+            model_args = _select_precomputed_model_args(precomputed_text_embeds, prompts, model, z)
+            if additional_args is not None:
+                model_args.update(additional_args)
         else:
             # text encoding
             model_args = text_encoder.encode(prompts)
