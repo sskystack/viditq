@@ -216,12 +216,7 @@ def main():
         if motion_cfg is None or not motion_cfg.get("enabled", False):
             return {}
 
-        calib_num_samples = int(motion_cfg.get("calib_num_samples", 1))
-        if calib_num_samples <= 0:
-            return {}
-
         assert not precompute_text_embeds, "Motion PTQ calibration currently expects an online text encoder."
-        logger.info(f"Collecting motion bucket activation clips with {calib_num_samples} prompt(s).")
 
         prompts = cfg.get("prompt", None)
         if prompts is None:
@@ -229,7 +224,10 @@ def main():
                 prompts = load_prompts(cfg.prompt_path, cfg.get("start_index", 0), cfg.get("end_index", None))
             else:
                 prompts = [cfg.get("prompt_generator", "")]
-        prompts = prompts[:calib_num_samples]
+        calib_num_samples = int(motion_cfg.get("calib_num_samples", 0))
+        if calib_num_samples > 0:
+            prompts = prompts[:calib_num_samples]
+        logger.info(f"Collecting motion bucket activation clips with {len(prompts)} prompt(s).")
 
         model.enable_motion_calibration(enabled=True, reset=True)
         model.set_init_done()
@@ -240,7 +238,7 @@ def main():
         mask_strategy = cfg.get("mask_strategy", [""] * len(prompts))
 
         with torch.no_grad():
-            for i in range(0, len(prompts), batch_size):
+            for i in progress_wrap(range(0, len(prompts), batch_size)):
                 batch_prompts = prompts[i : i + batch_size]
                 refs = reference_path[i : i + batch_size]
                 ms = mask_strategy[i : i + batch_size]
@@ -261,7 +259,7 @@ def main():
                     prompts=batch_prompts,
                     device=device,
                     additional_args=model_args,
-                    progress=False,
+                    progress=verbose >= 2,
                     mask=masks,
                     precompute_text_embeds=False,
                 )

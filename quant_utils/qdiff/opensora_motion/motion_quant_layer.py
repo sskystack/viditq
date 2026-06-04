@@ -1,8 +1,10 @@
+import math
+
 import torch
 import torch.nn.functional as F
 
-from qdiff.base.quant_layer import QuantizedLinear
 from qdiff.opensora_motion.motion_context import motion_context
+from qdiff.viditq.viditq_quant_layer import ViDiTQuantizedLinear
 
 
 def _dynamic_symmetric_quantize(x, n_bits, clip_value=None, eps=1.0e-6):
@@ -18,8 +20,8 @@ def _dynamic_symmetric_quantize(x, n_bits, clip_value=None, eps=1.0e-6):
     return x_int * delta
 
 
-class MotionQuantizedLinear(QuantizedLinear):
-    """OpenSora-only motion-routed activation quantization layer."""
+class MotionQuantizedLinear(ViDiTQuantizedLinear):
+    """OpenSora-only ViDiT-Q layer with motion-routed activation bit-widths."""
 
     def __init__(self, in_features, out_features, bias, device, quant_config, fp_module):
         super().__init__(in_features, out_features, bias, device, quant_config, fp_module)
@@ -27,6 +29,12 @@ class MotionQuantizedLinear(QuantizedLinear):
         self.low_bit = int(motion_cfg.get("low_bit", 4)) if motion_cfg is not None else 4
         self.mid_bit = int(motion_cfg.get("mid_bit", 6)) if motion_cfg is not None else 6
         self.high_bit = int(motion_cfg.get("high_bit", 8)) if motion_cfg is not None else 8
+        self.base8_high_ratio = float(motion_cfg.get("base8_high_ratio", 0.85)) if motion_cfg is not None else 0.85
+        self.base8_mid_ratio = float(motion_cfg.get("base8_mid_ratio", 0.12)) if motion_cfg is not None else 0.12
+        self.base4_high_ratio = float(motion_cfg.get("base4_high_ratio", 0.15)) if motion_cfg is not None else 0.15
+        self.base4_mid_ratio = float(motion_cfg.get("base4_mid_ratio", 0.25)) if motion_cfg is not None else 0.25
+        self.motion_weight = float(motion_cfg.get("motion_weight", 0.7)) if motion_cfg is not None else 0.7
+        self.activation_weight = float(motion_cfg.get("activation_weight", 0.3)) if motion_cfg is not None else 0.3
         self.motion_calibration = False
         self.clip_quantile = float(motion_cfg.get("clip_quantile", 0.999)) if motion_cfg is not None else 0.999
         self.motion_clip_stats = {}
@@ -65,13 +73,65 @@ class MotionQuantizedLinear(QuantizedLinear):
             else:
                 self.motion_clip_stats[n_bits] = torch.maximum(old_value.to(clip_value.device), clip_value.detach())
 
+    def _current_base_act_bit(self):
+        if self.a_quantizer is None:
+            return self.high_bit
+        return int(getattr(self.a_quantizer, "n_bits", self.high_bit))
+
+    def _ratio_for_base_bit(self, base_bit):
+        if base_bit <= self.low_bit:
+            return self.base4_high_ratio, self.base4_mid_ratio
+        return self.base8_high_ratio, self.base8_mid_ratio
+
+    @staticmethod
+    def _normalize_token_score(score):
+        flat = score.reshape(score.shape[0], -1)
+        median = flat.median(dim=1).values.reshape(score.shape[0], 1).clamp(min=1.0e-6)
+        return score / median
+
+    def _route_bits(self, score, base_bit):
+        high_ratio, mid_ratio = self._ratio_for_base_bit(base_bit)
+        high_ratio = max(0.0, min(1.0, high_ratio))
+        mid_ratio = max(0.0, min(1.0 - high_ratio, mid_ratio))
+
+        flat_score = score.reshape(score.shape[0], -1)
+        num_tokens = flat_score.shape[1]
+        num_high = int(math.ceil(num_tokens * high_ratio))
+        num_mid = int(math.ceil(num_tokens * mid_ratio))
+        num_high = max(0, min(num_tokens, num_high))
+        num_high_mid = max(0, min(num_tokens, num_high + num_mid))
+
+        flat_bits = torch.full_like(flat_score, self.low_bit, dtype=torch.int16)
+        if num_high > 0:
+            high_threshold = torch.topk(flat_score, k=num_high, dim=1).values[:, -1].reshape(score.shape[0], 1)
+            flat_bits = torch.where(
+                flat_score >= high_threshold,
+                torch.full_like(flat_bits, self.high_bit),
+                flat_bits,
+            )
+        if num_high_mid > num_high:
+            mid_threshold = torch.topk(flat_score, k=num_high_mid, dim=1).values[:, -1].reshape(score.shape[0], 1)
+            mid_mask = (flat_score >= mid_threshold) & (flat_bits != self.high_bit)
+            flat_bits = torch.where(
+                mid_mask,
+                torch.full_like(flat_bits, self.mid_bit),
+                flat_bits,
+            )
+        return flat_bits.reshape(score.shape)
+
     def _motion_quantize_activation(self, x):
-        bits = motion_context.resolve_bits(x.shape)
-        if bits is None or self.a_quantizer is None:
+        motion_score = motion_context.resolve_scores(x.shape)
+        if motion_score is None or self.a_quantizer is None:
             bsz, token_num, channel = x.shape
             x_flat = x.reshape(bsz * token_num, channel)
             return self.a_quantizer(x_flat).reshape_as(x) if self.a_quantizer is not None else x
 
+        base_bit = self._current_base_act_bit()
+        token_absmax = x.detach().abs().amax(dim=-1).float()
+        motion_score = self._normalize_token_score(motion_score.to(device=x.device, dtype=torch.float32))
+        activation_score = self._normalize_token_score(token_absmax)
+        score = self.motion_weight * motion_score + self.activation_weight * activation_score
+        bits = self._route_bits(score, base_bit)
         self._observe_motion_clip(x, bits)
         dtype = x.dtype
         channel = x.shape[-1]
@@ -94,5 +154,11 @@ class MotionQuantizedLinear(QuantizedLinear):
         if not self.quant_mode:
             return self.fp_module(x, *args, **kwargs)
 
+        dtype_ = x.dtype
+        if self.channel_mask is not None and self.rotation_matrix is not None:
+            channel = x.shape[-1]
+            x = x * self.channel_mask.reshape([1, 1, channel]).to(device=x.device, dtype=x.dtype)
+            x = torch.matmul(x.double(), self.rotation_matrix).to(dtype=dtype_)
+
         x = self._motion_quantize_activation(x)
-        return F.linear(x, self.weight.to(dtype=x.dtype), self.bias, *args, **kwargs)
+        return F.linear(x, self.weight.to(dtype=dtype_), self.bias, *args, **kwargs)

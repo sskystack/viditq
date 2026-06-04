@@ -1,31 +1,47 @@
 model:
     model_id: "opensora"
-    model_type: "opensora"
+    model_type: 'opensora'  # ['sd','sdxl']
 
-remain_fp_regex: embedder|adaLN_modulation|t_block|final_layer|cross_attn.kv_linear
+remain_fp_regex: embedder|adaLN_modulation|final_layer|t_block
+
+mixed_precision:
+  weight:
+    layer_name_regex: ['embedder|adaLN_modulation|final_layer|t_block|cross','','11|12|13|14','mlp']
+  act:
+    layer_name_regex: ['embedder|adaLN_modulation|final_layer|t_block|cross','','11|12|13|14','mlp']
 
 motion_ptq:
   enabled: true
-  layer_name_regex: "blocks.*(attn.qkv|attn.proj|mlp.fc1|mlp.fc2|cross_attn.q_linear|cross_attn.proj)"
+  layer_name_regex: "blocks.*(attn.qkv|attn.proj|mlp.fc1|mlp.fc2)"
   low_bit: 4
   mid_bit: 6
   high_bit: 8
-  high_ratio: 0.15
-  mid_ratio: 0.35
+  base8_high_ratio: 0.85
+  base8_mid_ratio: 0.12
+  base4_high_ratio: 0.15
+  base4_mid_ratio: 0.25
+  motion_weight: 0.7
+  activation_weight: 0.3
   macroblock_size: 4
   score_reduce: "max"
   first_frame_policy: "repeat_next"
   timestep_gate: "none"
   clip_quantile: 0.999
-  calib_num_samples: 1
+  calib_num_samples: 0
+
+viditq:
+  alpha: 0.5665
+  layer_name_regex: "blocks.*(attn.qkv|attn.proj|mlp.fc1|mlp.fc2)"
 
 calib_data:
   save_path: ./motion_calib_data.pth
 
 weight:
-  n_bits: 4
+  n_bits: [2,4,8]
+  i_bitwidth: 2
   sym: False
 
 act:
-  n_bits: 4
+  n_bits: [2,4,8]
+  i_bitwidth: 2
   sym: True

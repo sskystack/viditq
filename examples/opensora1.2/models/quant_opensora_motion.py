@@ -23,7 +23,7 @@ from qdiff.base.quant_model import (
 )
 from qdiff.opensora_motion.motion_context import motion_context
 from qdiff.opensora_motion.motion_quant_layer import MotionQuantizedLinear
-from qdiff.opensora_motion.motion_utils import compute_motion_token_bits
+from qdiff.opensora_motion.motion_utils import compute_motion_token_scores
 from qdiff.utils import apply_func_to_submodules
 
 logger = logging.getLogger(__name__)
@@ -165,7 +165,7 @@ class QuantOpenSoraMotion(STDiT3):
         if motion_cfg is None or not motion_cfg.get("enabled", False):
             motion_context.clear()
             return
-        token_bits = compute_motion_token_bits(
+        token_scores = compute_motion_token_scores(
             latent=x,
             timestep=timestep,
             num_frames=num_frames,
@@ -174,7 +174,7 @@ class QuantOpenSoraMotion(STDiT3):
             patch_size=self.patch_size,
             cfg=motion_cfg,
         )
-        motion_context.set_bits(token_bits, num_frames, num_spatial_tokens)
+        motion_context.set_scores(token_scores, num_frames, num_spatial_tokens)
 
     def forward(self, x, timestep, y, mask=None, x_mask=None, fps=None, height=None, width=None, **kwargs):
         dtype = self.x_embedder.proj.weight.dtype

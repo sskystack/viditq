@@ -10,6 +10,9 @@ class MotionContext:
         self.visual_bits = None
         self.spatial_bits = None
         self.temporal_bits = None
+        self.visual_scores = None
+        self.spatial_scores = None
+        self.temporal_scores = None
 
     def set_bits(self, token_bits, num_frames, num_spatial_tokens):
         self.enabled = True
@@ -19,6 +22,15 @@ class MotionContext:
         self.visual_bits = token_bits.reshape(self.batch_size, num_frames * num_spatial_tokens)
         self.spatial_bits = token_bits.reshape(self.batch_size * num_frames, num_spatial_tokens)
         self.temporal_bits = token_bits.permute(0, 2, 1).reshape(self.batch_size * num_spatial_tokens, num_frames)
+
+    def set_scores(self, token_scores, num_frames, num_spatial_tokens):
+        self.enabled = True
+        self.batch_size = token_scores.shape[0]
+        self.num_frames = num_frames
+        self.num_spatial_tokens = num_spatial_tokens
+        self.visual_scores = token_scores.reshape(self.batch_size, num_frames * num_spatial_tokens)
+        self.spatial_scores = token_scores.reshape(self.batch_size * num_frames, num_spatial_tokens)
+        self.temporal_scores = token_scores.permute(0, 2, 1).reshape(self.batch_size * num_spatial_tokens, num_frames)
 
     def resolve_bits(self, x_shape):
         if not self.enabled or len(x_shape) != 3:
@@ -33,6 +45,18 @@ class MotionContext:
             return self.temporal_bits
         return None
 
+    def resolve_scores(self, x_shape):
+        if not self.enabled or len(x_shape) != 3:
+            return None
+
+        batch, token_num, _ = x_shape
+        if batch == self.batch_size and token_num == self.num_frames * self.num_spatial_tokens:
+            return self.visual_scores
+        if batch == self.batch_size * self.num_frames and token_num == self.num_spatial_tokens:
+            return self.spatial_scores
+        if batch == self.batch_size * self.num_spatial_tokens and token_num == self.num_frames:
+            return self.temporal_scores
+        return None
+
 
 motion_context = MotionContext()
-
