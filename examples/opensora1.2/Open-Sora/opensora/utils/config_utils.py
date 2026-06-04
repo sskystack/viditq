@@ -41,6 +41,11 @@ def parse_args(training=False):
         parser.add_argument("--end-index", default=None, type=int, help="end index for sample name")
         parser.add_argument("--num-sample", default=None, type=int, help="number of samples to generate for one prompt")
         parser.add_argument("--prompt-as-path", action="store_true", help="use prompt as path to save samples")
+        parser.add_argument(
+            "--data-parallel",
+            action="store_true",
+            help="split prompts across distributed ranks instead of using sequence parallelism",
+        )
         parser.add_argument("--verbose", default=None, type=int, help="verbose level")
 
         # prompt

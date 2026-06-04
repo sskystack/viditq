@@ -55,26 +55,34 @@ def main():
     if is_distributed():
         colossalai.launch_from_torch({})
         coordinator = DistCoordinator()
-        enable_sequence_parallelism = coordinator.world_size > 1
+        data_parallel = cfg.get("data_parallel", False)
+        enable_sequence_parallelism = coordinator.world_size > 1 and not data_parallel
         if enable_sequence_parallelism:
             set_sequence_parallel_group(dist.group.WORLD)
     else:
         coordinator = None
+        data_parallel = False
         enable_sequence_parallelism = False
     seed_everything(cfg.get("seed", 1024))
     # set_random_seed(seed=cfg.get("seed", 1024))
     
     # == bakup some files ==
     import shutil
-    if os.path.exists(os.path.join(cfg.save_dir,'configs')):
-        shutil.rmtree(os.path.join(cfg.save_dir,'configs'))
-    shutil.copytree('./configs', os.path.join(cfg.save_dir,'configs'))
+    if is_main_process():
+        os.makedirs(cfg.save_dir, exist_ok=True)
+        if os.path.exists(os.path.join(cfg.save_dir,'configs')):
+            shutil.rmtree(os.path.join(cfg.save_dir,'configs'))
+        shutil.copytree('./configs', os.path.join(cfg.save_dir,'configs'))
+    if is_distributed():
+        coordinator.block_all()
 
     # == init logger ==
     logger = create_logger()
     logger.info("Inference configuration:\n %s", pformat(cfg.to_dict()))
     verbose = cfg.get("verbose", 1)
-    progress_wrap = tqdm if verbose == 1 else (lambda x: x)
+    rank = coordinator.rank if coordinator is not None else 0
+    world_size = coordinator.world_size if coordinator is not None else 1
+    progress_wrap = tqdm if verbose == 1 and rank == 0 else (lambda x: x)
     
     # INFO: precompute the text embeds to avoid loading the T5 repeatedly
     precompute_text_embeds = cfg.get("precompute_text_embeds", False)
@@ -165,11 +173,25 @@ def main():
             prompts = [cfg.get("prompt_generator", "")] * 1_000_000  # endless loop
             import ipdb; ipdb.set_trace()
     
+    prompt_indices = list(range(start_idx, start_idx + len(prompts)))
+
     # == prepare reference ==
     reference_path = cfg.get("reference_path", [""] * len(prompts))
     mask_strategy = cfg.get("mask_strategy", [""] * len(prompts))
     assert len(reference_path) == len(prompts), "Length of reference must be the same as prompts"
     assert len(mask_strategy) == len(prompts), "Length of mask_strategy must be the same as prompts"
+
+    if data_parallel:
+        prompts = prompts[rank::world_size]
+        reference_path = reference_path[rank::world_size]
+        mask_strategy = mask_strategy[rank::world_size]
+        prompt_indices = prompt_indices[rank::world_size]
+        logger.info(
+            "Data parallel inference enabled: rank %s/%s handles %s prompt(s).",
+            rank,
+            world_size,
+            len(prompts),
+        )
 
     # == prepare arguments ==
     fps = cfg.fps
@@ -186,6 +208,8 @@ def main():
     os.makedirs(save_dir, exist_ok=True)
     sample_name = cfg.get("sample_name", None)
     prompt_as_path = cfg.get("prompt_as_path", False)
+    save_on_this_rank = data_parallel or is_main_process()
+    num_processed = 0
 
     # == Iter over all samples ==
     for i in progress_wrap(range(0, len(prompts), batch_size)):
@@ -193,6 +217,7 @@ def main():
         batch_prompts = prompts[i : i + batch_size]
         ms = mask_strategy[i : i + batch_size]
         refs = reference_path[i : i + batch_size]
+        batch_indices = prompt_indices[i : i + batch_size]
 
         # == get json from prompts ==
         batch_prompts, refs, ms = extract_json_from_prompts(batch_prompts, refs, ms)
@@ -213,7 +238,7 @@ def main():
                 get_save_path_name(
                     save_dir,
                     sample_name=sample_name,
-                    sample_idx=start_idx + idx,
+                    sample_idx=batch_indices[idx],
                     prompt=original_batch_prompts[idx],
                     prompt_as_path=prompt_as_path,
                     num_sample=num_sample,
@@ -323,7 +348,7 @@ def main():
                 video_clips.append(samples)
 
             # == save samples ==
-            if is_main_process():
+            if save_on_this_rank:
                 for idx, batch_prompt in enumerate(batch_prompts):
                     if verbose >= 2:
                         logger.info("Prompt: %s", batch_prompt)
@@ -341,9 +366,11 @@ def main():
                     if save_path.endswith(".mp4") and cfg.get("watermark", False):
                         time.sleep(1)  # prevent loading previous generated video
                         add_watermark(save_path)
-        start_idx += len(batch_prompts)
+        num_processed += len(batch_prompts)
+    if is_distributed():
+        coordinator.block_all()
     logger.info("Inference finished.")
-    logger.info("Saved %s samples to %s", start_idx, save_dir)
+    logger.info("Processed %s prompt(s) on rank %s and saved samples to %s", num_processed, rank, save_dir)
 
 
 
