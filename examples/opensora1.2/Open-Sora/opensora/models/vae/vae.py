@@ -263,7 +263,7 @@ def OpenSoraVAE_V1_2(
 ):
     vae_2d = dict(
         type="VideoAutoencoderKL",
-        from_pretrained="PixArt-alpha/pixart_sigma_sdxlvae_T5_diffusers",
+        from_pretrained="/home/aistudio/data/models/hpcai-tech/OpenSora-VAE-v1.2",
         subfolder="vae",
         micro_batch_size=micro_batch_size,
         local_files_only=local_files_only,
@@ -285,7 +285,7 @@ def OpenSoraVAE_V1_2(
     )
 
     if force_huggingface or (from_pretrained is not None and not os.path.exists(from_pretrained)):
-        model = VideoAutoencoderPipeline.from_pretrained(from_pretrained, **kwargs)
+        model = VideoAutoencoderPipeline.from_pretrained(from_pretrained, use_safetensors=True, **kwargs)
     else:
         config = VideoAutoencoderPipelineConfig(**kwargs)
         model = VideoAutoencoderPipeline(config)

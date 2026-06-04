@@ -1,0 +1,31 @@
+model:
+    model_id: "opensora"
+    model_type: "opensora"
+
+remain_fp_regex: embedder|adaLN_modulation|t_block|final_layer|cross_attn.kv_linear
+
+motion_ptq:
+  enabled: true
+  layer_name_regex: "blocks.*(attn.qkv|attn.proj|mlp.fc1|mlp.fc2|cross_attn.q_linear|cross_attn.proj)"
+  low_bit: 4
+  mid_bit: 6
+  high_bit: 8
+  high_ratio: 0.15
+  mid_ratio: 0.35
+  macroblock_size: 4
+  score_reduce: "max"
+  first_frame_policy: "repeat_next"
+  timestep_gate: "none"
+  clip_quantile: 0.999
+  calib_num_samples: 1
+
+calib_data:
+  save_path: ./motion_calib_data.pth
+
+weight:
+  n_bits: 4
+  sym: False
+
+act:
+  n_bits: 4
+  sym: True
