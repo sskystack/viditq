@@ -69,5 +69,5 @@ if __name__ == "__main__":
     #parser.add_argument("--dir_results", type=str, default='', help="Specify the path of results")
     args = parser.parse_args()
     
-    #dir = "/share/public/video_quant/wanrui/VBench/our_video/ucf_sq_d_48"
+    #dir = "/root/autodl-tmp/viditq/examples/opensora1.2/logs/motion_ptq_vbench"
     compute_temporal_flickering(args.dir_videos)

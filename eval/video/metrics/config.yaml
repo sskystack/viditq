@@ -10,7 +10,7 @@ metrics:
 
   - type: fvd
     model:
-      path: /share/public/video_quant/vm_ckpt/i3d_pretrained_400.pt
+      path: /root/autodl-tmp/vbench_cache/i3d_pretrained_400.pt
     data:
       dataset:
         sequence_length: 16

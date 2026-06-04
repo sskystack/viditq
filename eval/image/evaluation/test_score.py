@@ -6,8 +6,7 @@ import torch
 from tqdm import tqdm
 import random
 import sys
-# sys.path.append("/mnt/public/video_quant/chenxianying/ditq_eval/diffuser-dev-eval")
-sys.path.append("/mnt/public/diffusion_quant/zhaotianchen/project/viditq/clean/eval/image")
+sys.path.append("/root/autodl-tmp/viditq/eval/image")
 import evaluation.metrics as RM
 from evaluation.fid_score import calculate_fid_given_paths
 import matplotlib.pyplot as plt

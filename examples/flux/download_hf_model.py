@@ -1,8 +1,8 @@
 import torch
 from diffusers import FluxPipeline
 
-cache_dir = "/share/xieruiqi-local/cache/flux/"
-save_path = "/share/xieruiqi-local/models/flux/" # change accordingly
+cache_dir = "/root/autodl-tmp/huggingface/hub/flux/"
+save_path = "/root/autodl-tmp/models/flux/" # change accordingly
 
 pipe = FluxPipeline.from_pretrained(cache_dir, torch_dtype=torch.bfloat16)
 pipe.enable_model_cpu_offload() #save some VRAM by offloading the model to CPU. Remove this if you have enough GPU power

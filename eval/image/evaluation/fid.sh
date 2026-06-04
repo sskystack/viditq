@@ -1,7 +1,7 @@
 #!/bin/bash
 
-fp_path="$YOUR_PATH/diffuser-dev/examples/Flux/logs/final/BASIC8/generated_images_30"
-base_dir="$YOUR_PATH/diffuser-dev/examples/Flux/logs/final/Perrow_QKsmooth8_PV8/generated_images_30"
+fp_path="/root/autodl-tmp/viditq/examples/flux/logs/final/BASIC8/generated_images_30"
+base_dir="/root/autodl-tmp/viditq/examples/flux/logs/final/Perrow_QKsmooth8_PV8/generated_images_30"
 log_file="./logs/test.txt"
 
 python fid_score.py \
@@ -16,5 +16,4 @@ python fid_score.py \
 #         --log_file "$log_file"
 #     fi
 # done
-
 

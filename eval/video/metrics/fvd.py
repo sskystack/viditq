@@ -50,7 +50,8 @@ def compute_our_fvd(videos_fake: np.ndarray,
     with open_url(detector_url, verbose=False) as f:
         detector = torch.jit.load(f).eval().to(device)
     """
-    detector = torch.jit.load('$YOUR_PATH/.cache/frechat/i3d_torchscript.pt',map_location=device).eval().to(device)
+    detector_path = os.environ.get("I3D_TORCHSCRIPT_PATH", "/root/autodl-tmp/vbench_cache/i3d_torchscript.pt")
+    detector = torch.jit.load(detector_path, map_location=device).eval().to(device)
     
     
 
@@ -86,7 +87,7 @@ def compute_our_fvd(videos_fake: np.ndarray,
 
     return compute_fvd(feats_fake, feats_real)
 
-def read_ucf101_simple(base_path='/share/public/video_quant/wanrui/datasets/ucf101/videos/UCF-101'):
+def read_ucf101_simple(base_path="/root/autodl-tmp/datasets/ucf101/videos/UCF-101"):
     # 从每个class中随机抽出一个视频
     output_size = (224, 224)
 
@@ -138,7 +139,7 @@ def read_ucf101_simple(base_path='/share/public/video_quant/wanrui/datasets/ucf1
     return final_tensor
 
 
-def read_ucf101_full(base_path='/share/public/video_quant/wanrui/datasets/ucf101/videos/UCF-101',batch_start=0,batch_end=101):
+def read_ucf101_full(base_path="/root/autodl-tmp/datasets/ucf101/videos/UCF-101",batch_start=0,batch_end=101):
     # 从每个class中随机抽出一个视频
     output_size = (224, 224)
 

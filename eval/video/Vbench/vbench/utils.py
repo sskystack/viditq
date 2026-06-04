@@ -16,10 +16,9 @@ except ImportError:
     BICUBIC = Image.BICUBIC
     BILINEAR = Image.BILINEAR
 
-#CACHE_DIR = os.environ.get('VBENCH_CACHE_DIR')
-CACHE_DIR = "/share/public/video_quant/vm_ckpt"
+CACHE_DIR = os.environ.get("VBENCH_CACHE_DIR")
 if CACHE_DIR is None:
-    CACHE_DIR = os.path.join(os.path.expanduser('~'), '.cache', 'vbench')
+    CACHE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '.cache', 'vm_ckpt')
 
 logging.basicConfig(level = logging.INFO,format = '%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)

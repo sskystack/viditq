@@ -2,9 +2,9 @@ import os
 import shutil
 
 # Define folder paths
-folder_a = '/mnt/public/fangtongcheng/iclr_code/ViDiT-Q/logs/exp_iclr/qdit_w6a6_test/generated_videos_opensora'  # Path to Folder A
-folder_b = '/mnt/public/fangtongcheng/iclr_code/ViDiT-Q/logs/exp_iclr/qdit_w6a6_test/processed_videos'  # Path to Folder B
-folder_txt = '/share/public/video_quant/wanrui/VBench/final_prompt_simple'
+folder_a = "/root/autodl-tmp/viditq/examples/opensora1.2/logs/motion_ptq_vbench"
+folder_b = "/root/autodl-tmp/viditq/examples/opensora1.2/logs/motion_ptq_vbench_split"
+folder_txt = "/root/autodl-tmp/viditq/examples/opensora1.2/assets/vbench"
 
 # Define subfolder paths
 subfolders = ['subject_consistency', 'overall_consistency', 'scene']

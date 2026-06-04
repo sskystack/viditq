@@ -4,8 +4,8 @@
 export HF_ENDPOINT=https://hf-mirror.com
 #metric="ImageReward"
 
-fp_path="$YOUR_PATH/project/attn_quant/diffuser-dev/examples/cogvideo_attn/diffuser-dev-220flux/examples/flux/logs/calib_data/coco/generated_images_30"
-prompt_path="/mnt/public/diffusion_quant/zhaotianchen/project/viditq/clean/eval/image/coco_1024.txt"
+fp_path="/root/autodl-tmp/viditq/examples/flux/logs/calib_data/coco/generated_images_30"
+prompt_path="/root/autodl-tmp/viditq/eval/image/coco_1024.txt"
 
 path_file="paths.txt"
 
@@ -38,6 +38,5 @@ while read -r path; do
 
 
 done < "$path_file"
-
 
 

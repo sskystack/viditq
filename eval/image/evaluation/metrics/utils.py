@@ -143,7 +143,7 @@ def load_score(name: str = "CLIP", device: Union[str, torch.device] = "cuda" if 
     model : torch.nn.Module
         The model
     """
-    model_download_root = download_root or os.path.expanduser("/share/public/video_quant/chenxianying/.cache/metric_models")
+    model_download_root = download_root or os.path.expanduser(os.environ.get("METRIC_MODELS_DIR", "/root/autodl-tmp/metric_models"))
     if name != 'PickScore' and name != "HPS":
         if name in _SCORES:
             file_name = _SCORES[name].split("/")[-1]
@@ -167,7 +167,7 @@ def load_score(name: str = "CLIP", device: Union[str, torch.device] = "cuda" if 
         model = AestheticScore(download_root=model_download_root, device=device).to(device)
         model.mlp.load_state_dict(state_dict,strict=False)
     elif name == "ImageReward":
-        model_path = os.path.expanduser("/share/public/video_quant/chenxianying/.cache/metric_models/ImageReward.pt")
+        model_path = os.path.join(model_download_root, "ImageReward.pt")
         state_dict = torch.load(model_path, map_location='cpu')
         med_config = os.path.expanduser("~/.cache/metric_models/med_config.json")
         model = ImageReward(device=device, med_config=med_config).to(device)

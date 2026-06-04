@@ -1,18 +1,18 @@
 # --- Speqcify the generated images for testing ---
 dir_videos=$1
-#dir_videos="/mnt/public/diffusion_quant/zhaotianchen/project/viditq/clean/examples/cogvideo_attn/logs/test/generated_videos"
+#dir_videos="/root/autodl-tmp/viditq/examples/opensora1.2/logs/test/generated_videos"
 
 # INFO: drop the last part of the path of dir_videos (namely the `genratetd_videos`, 
 # because geanerating metric.log in `generated_videos` folder would cause trouble when evaluating some other metrics)
 dir_save=$(dirname $dir_videos)    
 
 # --- Spcify the prompts used for generation (to measure text-video alignment) ---
-#dir_prompts="$YOUR_PATH/diffuser-dev/examples/opensora1.2/ucf_long_100_copy.txt"   #for stdit
-dir_prompts="/mnt/public/diffusion_quant/zhaotianchen/project/viditq/clean/examples/cogvideo_attn/prompts.txt"   #for cogvideo
+#dir_prompts="/root/autodl-tmp/viditq/examples/opensora1.2/ucf_long_100_copy.txt"   #for stdit
+dir_prompts="/root/autodl-tmp/viditq/examples/opensora1.2/prompts.txt"   #for cogvideo
 
 # --- Specify the FP generated / groun-truth reference videos (for FVD and FVD-FP16 computation) ---
-#dir_ref_vid_ucf="/share/public/video_quant/wanrui/datasets/ucf101/videos/"                 #fvd_ucf101
-dir_ref_vid_fp="/mnt/public/diffusion_quant/zhaotianchen/project/attn_quant/diffuser-dev/examples/cogvideo_attn/logs/baselines_50steps/fp16/generated_videos"		  #fvd_fp16
+#dir_ref_vid_ucf="/root/autodl-tmp/datasets/ucf101/videos/"                 #fvd_ucf101
+dir_ref_vid_fp="/root/autodl-tmp/viditq/examples/opensora1.2/logs/baselines_50steps/fp16/generated_videos"		  #fvd_fp16
 
 # --- Specify the eval project root path ---
 root_path="./"
@@ -70,4 +70,3 @@ echo "------------ Final Results: ---------------"
 
 CUDA_VISIBLE_DEVICES=$CUDA_DEVICES python read_metric_log.py $dir_save/metrics.log 2>&1 | tee -a $dir_save/metrics.log
 echo "------------------------------------------"
-

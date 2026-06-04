@@ -8,7 +8,7 @@
 * https://github.com/salesforce/BLIP
 '''
 import sys
-sys.path.append("/share/liuenshu/diffuser-dev/evaluation")
+sys.path.append("/root/autodl-tmp/viditq/eval/image/evaluation")
 
 import os
 import torch

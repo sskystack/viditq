@@ -14,8 +14,9 @@ class PickScore(nn.Module):
 
         # processor_name_or_path = "laion/CLIP-ViT-H-14-laion2B-s32B-b79K"
         # model_pretrained_name_or_path = "yuvalkirstain/PickScore_v1"
-        processor_name_or_path = "$YOUR_PATH/.cache/metric_models/models--laion--CLIP-ViT-H-14-laion2B-s32B-b79K/snapshots/94a64189c3535c1cb44acfcccd7b0908c1c8eb23"
-        model_pretrained_name_or_path = "$YOUR_PATH/.cache/metric_models/models--yuvalkirstain--PickScore_v1/snapshots/a4e4367c6dfa7288a00c550414478f865b875800"
+        metric_root = os.environ.get("METRIC_MODELS_DIR", "/root/autodl-tmp/metric_models")
+        processor_name_or_path = os.path.join(metric_root, "models--laion--CLIP-ViT-H-14-laion2B-s32B-b79K/snapshots/94a64189c3535c1cb44acfcccd7b0908c1c8eb23")
+        model_pretrained_name_or_path = os.path.join(metric_root, "models--yuvalkirstain--PickScore_v1/snapshots/a4e4367c6dfa7288a00c550414478f865b875800")
         self.processor = AutoProcessor.from_pretrained(processor_name_or_path)
         self.model = AutoModel.from_pretrained(model_pretrained_name_or_path).eval().to(device)
         

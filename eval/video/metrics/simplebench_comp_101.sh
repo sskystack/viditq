@@ -1,13 +1,13 @@
 # --- Speqcify the generated images for testing ---
-dir_videos="$YOUR_PATH/ViDiT-Q/examples/opensora1.2/logs/w4a8_mp/"
+dir_videos="/root/autodl-tmp/viditq/examples/opensora1.2/logs/motion_ptq_vbench/"
 
 dir_save=$(dirname $dir_videos)    
 
 # --- Spcify the prompts used for generation (to measure text-video alignment) ---
-dir_prompts="$YOUR_PATH/ViDiT-Q/examples/opensora1.2/assets/t2v_samples.txt"  
+dir_prompts="/root/autodl-tmp/viditq/examples/opensora1.2/assets/t2v_samples.txt"  
 
 # --- Specify the FP generated / groun-truth reference videos (for FVD and FVD-FP16 computation) ---
-dir_ref_vid_fp="$YOUR_PATH/ViDiT-Q/examples/opensora1.2/logs/software_simulation_mp/"		  #fvd_fp16
+dir_ref_vid_fp="/root/autodl-tmp/viditq/examples/opensora1.2/logs/software_simulation_mp/"		  #fvd_fp16
 
 # --- Specify the eval project root path ---
 root_path="./"
@@ -69,4 +69,3 @@ echo "------------ Final Results: ---------------"
 
 CUDA_VISIBLE_DEVICES=$CUDA_DEVICES python read_metric_log.py  $dir_save/metrics.log
 echo "------------------------------------------"
-
