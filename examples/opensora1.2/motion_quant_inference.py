@@ -35,8 +35,17 @@ from opensora.utils.inference_utils import (
     refine_prompts_by_openai,
     split_prompt,
 )
-from opensora.utils.misc import all_exists, create_logger, is_distributed, is_main_process, to_torch_dtype
+from opensora.utils.misc import create_logger, is_distributed, is_main_process, to_torch_dtype
 from qdiff.utils import apply_func_to_submodules, seed_everything
+
+
+def sample_output_exists(save_path):
+    return os.path.exists(save_path) or os.path.exists(f"{save_path}.mp4") or os.path.exists(f"{save_path}.png")
+
+
+def all_sample_outputs_exist(save_paths):
+    return all(sample_output_exists(save_path) for save_path in save_paths)
+
 
 def main():
     torch.set_grad_enabled(False)
@@ -249,7 +258,7 @@ def main():
 
             # NOTE: Skip if the sample already exists
             # This is useful for resuming sampling VBench
-            if prompt_as_path and all_exists(save_paths):
+            if prompt_as_path and all_sample_outputs_exist(save_paths):
                 continue
 
             # == process prompts step by step ==
