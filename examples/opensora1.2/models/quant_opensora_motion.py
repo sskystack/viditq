@@ -56,8 +56,13 @@ def motion_quant_layer_refactor_(submodule, name, parent_module, quant_config, f
         setattr(quant_layer.a_quantizer, "module_name", full_name)
 
 
-def set_motion_calibration_(submodule, enabled, reset, clip_quantile):
-    submodule.set_motion_calibration(enabled=enabled, reset=reset, clip_quantile=clip_quantile)
+def set_motion_calibration_(submodule, enabled, reset, clip_quantile, observe_only):
+    submodule.set_motion_calibration(
+        enabled=enabled,
+        reset=reset,
+        clip_quantile=clip_quantile,
+        observe_only=observe_only,
+    )
 
 
 def get_motion_clip_(submodule, full_name):
@@ -129,7 +134,7 @@ class QuantOpenSoraMotion(STDiT3):
             full_name=None,
         )
 
-    def enable_motion_calibration(self, enabled=True, reset=False):
+    def enable_motion_calibration(self, enabled=True, reset=False, observe_only=False):
         motion_cfg = self.quant_config.get("motion_ptq", None)
         clip_quantile = motion_cfg.get("clip_quantile", 0.999) if motion_cfg is not None else 0.999
         apply_func_to_submodules(
@@ -139,6 +144,7 @@ class QuantOpenSoraMotion(STDiT3):
             enabled=enabled,
             reset=reset,
             clip_quantile=clip_quantile,
+            observe_only=observe_only,
         )
 
     def get_motion_clip_dict(self):

@@ -36,12 +36,14 @@ class MotionQuantizedLinear(ViDiTQuantizedLinear):
         self.motion_weight = float(motion_cfg.get("motion_weight", 0.7)) if motion_cfg is not None else 0.7
         self.activation_weight = float(motion_cfg.get("activation_weight", 0.3)) if motion_cfg is not None else 0.3
         self.motion_calibration = False
+        self.motion_observe_only = False
         self.clip_quantile = float(motion_cfg.get("clip_quantile", 0.999)) if motion_cfg is not None else 0.999
         self.motion_clip_stats = {}
         self.motion_clip = {}
 
-    def set_motion_calibration(self, enabled=True, reset=False, clip_quantile=None):
+    def set_motion_calibration(self, enabled=True, reset=False, clip_quantile=None, observe_only=False):
         self.motion_calibration = enabled
+        self.motion_observe_only = enabled and observe_only
         if clip_quantile is not None:
             self.clip_quantile = float(clip_quantile)
         if reset:
@@ -133,6 +135,9 @@ class MotionQuantizedLinear(ViDiTQuantizedLinear):
         score = self.motion_weight * motion_score + self.activation_weight * activation_score
         bits = self._route_bits(score, base_bit)
         self._observe_motion_clip(x, bits)
+        if self.motion_observe_only:
+            return x
+
         dtype = x.dtype
         channel = x.shape[-1]
         x_flat = x.reshape(-1, channel)

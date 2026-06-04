@@ -259,6 +259,8 @@ def main():
         if clip_calib_mode == "none":
             logger.info("Skipping motion clip calibration by config.")
             return {}
+        if clip_calib_mode not in ("observe_only", "sample"):
+            raise ValueError(f"Unsupported motion_ptq.clip_calib_mode: {clip_calib_mode}")
 
         assert not precompute_text_embeds, "Motion PTQ calibration currently expects an online text encoder."
 
@@ -271,9 +273,13 @@ def main():
         calib_num_samples = int(motion_cfg.get("calib_num_samples", 0))
         if calib_num_samples > 0:
             prompts = prompts[:calib_num_samples]
-        logger.info(f"Collecting motion bucket activation clips with {len(prompts)} prompt(s).")
+        observe_only = clip_calib_mode == "observe_only"
+        logger.info(
+            f"Collecting motion bucket activation clips with {len(prompts)} prompt(s) "
+            f"(mode={clip_calib_mode})."
+        )
 
-        model.enable_motion_calibration(enabled=True, reset=True)
+        model.enable_motion_calibration(enabled=True, reset=True, observe_only=observe_only)
         model.set_init_done()
 
         batch_size = cfg.get("batch_size", 1)
@@ -308,7 +314,7 @@ def main():
                     precompute_text_embeds=False,
                 )
 
-        model.enable_motion_calibration(enabled=False, reset=False)
+        model.enable_motion_calibration(enabled=False, reset=False, observe_only=False)
         motion_clip_dict = model.get_motion_clip_dict()
         logger.info(f"Collected motion clip stats for {len(motion_clip_dict)} motion-quantized layer(s).")
         return motion_clip_dict
