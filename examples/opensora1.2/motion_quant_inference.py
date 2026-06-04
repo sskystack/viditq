@@ -111,7 +111,7 @@ def main():
                         patch_size=(1, 2, 2), 
                         num_heads=16, 
                         qk_norm=True,
-                        enable_flash_attn=True,
+                        enable_flash_attn=False,
                         enable_layernorm_kernel=False,  # no apex included
                         input_size=latent_size,
                         in_channels=vae.out_channels,
