@@ -73,6 +73,7 @@ def main():
     logger.info("Inference configuration:\n %s", pformat(cfg.to_dict()))
     verbose = cfg.get("verbose", 1)
     progress_wrap = tqdm if verbose == 1 else (lambda x: x)
+    calib_data = None
     
     # INFO: precompute the text embeds to avoid loading the T5 repeatedly
     precompute_text_embeds = cfg.get("precompute_text_embeds", False)
@@ -211,9 +212,52 @@ def main():
                             **kwargs
                             )
 
+    def build_motion_clip_from_calib_data():
+        motion_cfg = quant_config.get("motion_ptq", None)
+        if motion_cfg is None or not motion_cfg.get("enabled", False):
+            return {}
+        if calib_data is None:
+            logger.warning("motion clip calibration requested from calib_data, but calib_data is not loaded.")
+            return {}
+
+        from qdiff.opensora_motion.motion_quant_layer import MotionQuantizedLinear
+
+        clip_quantile = float(motion_cfg.get("clip_quantile", 0.999))
+
+        def build_layer_clip_(module, full_name):
+            if full_name not in calib_data:
+                return {}
+            act_stat = calib_data[full_name].detach().float().abs().reshape(-1)
+            if act_stat.numel() == 0:
+                return {}
+            clip = torch.quantile(act_stat, clip_quantile).detach().cpu()
+            return {
+                str(module.low_bit): clip,
+                str(module.mid_bit): clip,
+                str(module.high_bit): clip,
+            }
+
+        clip_dict = apply_func_to_submodules(
+            model,
+            class_type=MotionQuantizedLinear,
+            function=build_layer_clip_,
+            return_d={},
+            full_name=None,
+        )
+        clip_dict = {name: clips for name, clips in clip_dict.items() if len(clips) > 0}
+        logger.info(f"Built motion clip params from calib_data for {len(clip_dict)} motion-quantized layer(s).")
+        return clip_dict
+
     def run_motion_clip_calibration():
         motion_cfg = quant_config.get("motion_ptq", None)
         if motion_cfg is None or not motion_cfg.get("enabled", False):
+            return {}
+
+        clip_calib_mode = motion_cfg.get("clip_calib_mode", "act_calib")
+        if clip_calib_mode == "act_calib":
+            return build_motion_clip_from_calib_data()
+        if clip_calib_mode == "none":
+            logger.info("Skipping motion clip calibration by config.")
             return {}
 
         assert not precompute_text_embeds, "Motion PTQ calibration currently expects an online text encoder."
