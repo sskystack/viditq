@@ -43,6 +43,7 @@ class RFLOW:
         guidance_scale=None,
         progress=True,
         precompute_text_embeds=False,
+        probe_recorder=None,
     ):
         # if no specific guidance scale is provided, use the default scale when initializing the scheduler
         if guidance_scale is None:
@@ -80,8 +81,12 @@ class RFLOW:
             noise_added = torch.zeros_like(mask, dtype=torch.bool)
             noise_added = noise_added | (mask == 1)
 
-        progress_wrap = tqdm if progress else (lambda x: x)
-        for i, t in progress_wrap(enumerate(timesteps)):
+        progress_iter = (
+            tqdm(enumerate(timesteps), total=len(timesteps), desc="denoise", dynamic_ncols=True, leave=False)
+            if progress
+            else enumerate(timesteps)
+        )
+        for i, t in progress_iter:
             # mask for adding noise
             if mask is not None:
                 mask_t = mask * self.num_timesteps
@@ -96,6 +101,8 @@ class RFLOW:
                 noise_added = mask_t_upper
 
             # classifier-free guidance
+            if probe_recorder is not None:
+                probe_recorder(i, t, z, model_args)
             z_in = torch.cat([z, z], 0)
             t = torch.cat([t, t], 0)
             pred = model(z_in, t, **model_args).chunk(2, dim=1)[0]

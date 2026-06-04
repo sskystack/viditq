@@ -26,9 +26,11 @@ motion_ptq:
   score_reduce: "max"
   first_frame_policy: "repeat_next"
   timestep_gate: "none"
-  clip_calib_mode: "observe_only"
+  clip_calib_mode: "probe_replay"
   clip_quantile: 0.999
   calib_num_samples: 0
+  probe_cache_path: "./motion_probe_cache.pth"
+  probe_num_steps: 3
 
 viditq:
   alpha: 0.5665

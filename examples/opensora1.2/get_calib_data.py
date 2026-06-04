@@ -99,6 +99,44 @@ def add_hook_to_module_(module, hook_cls, **kwargs):
     return hook
 
 
+def clone_probe_model_args(model_args):
+    cloned = {}
+    for key, value in model_args.items():
+        if isinstance(value, torch.Tensor):
+            cloned[key] = value.detach().cpu()
+        else:
+            cloned[key] = value
+    return cloned
+
+
+class LatentProbeRecorder:
+    def __init__(self, num_sampling_steps, probe_num_steps=3, probe_indices=None):
+        if probe_indices is None:
+            if probe_num_steps <= 0:
+                indices = []
+            else:
+                if probe_num_steps == 1:
+                    indices = [num_sampling_steps // 2]
+                else:
+                    indices = torch.linspace(0, num_sampling_steps - 1, steps=probe_num_steps).round().long().tolist()
+        else:
+            indices = [int(index) for index in probe_indices]
+        self.indices = sorted(set(max(0, min(num_sampling_steps - 1, index)) for index in indices))
+        self.records = []
+
+    def __call__(self, step_index, timestep, latent, model_args):
+        if step_index not in self.indices:
+            return
+        self.records.append(
+            {
+                "step_index": int(step_index),
+                "timestep": timestep.detach().cpu(),
+                "latent": latent.detach().cpu(),
+                "model_args": clone_probe_model_args(model_args),
+            }
+        )
+
+
 def main():
     torch.set_grad_enabled(False)
     # ======================================================
@@ -135,7 +173,10 @@ def main():
     logger = create_logger()
     logger.info("Inference configuration:\n %s", pformat(cfg.to_dict()))
     verbose = cfg.get("verbose", 1)
-    progress_wrap = tqdm if verbose == 1 else (lambda x: x)
+    def progress_wrap(iterable, desc=None, total=None):
+        if verbose == 1:
+            return tqdm(iterable, desc=desc, total=total, dynamic_ncols=True)
+        return iterable
     
     # INFO: precompute the text embeds to avoid loading the T5 repeatedly
     precompute_text_embeds = cfg.get("precompute_text_embeds", False)
@@ -165,6 +206,8 @@ def main():
     # == build diffusion model ==
     ptq_config_file = cfg.get("ptq_config", None)
     quant_config = OmegaConf.load(ptq_config_file)
+    motion_cfg = quant_config.get("motion_ptq", None)
+    motion_probe_enabled = motion_cfg is not None and motion_cfg.get("enabled", False)
     
     '''
     INFO: modify the quant config to skip all quantization
@@ -193,6 +236,19 @@ def main():
 
     # == build scheduler ==
     scheduler = build_module(cfg.scheduler, SCHEDULERS)
+    probe_recorder = None
+    if motion_probe_enabled:
+        probe_num_steps = int(motion_cfg.get("probe_num_steps", 3))
+        probe_indices = motion_cfg.get("probe_step_indices", None)
+        probe_recorder = LatentProbeRecorder(
+            num_sampling_steps=scheduler.num_sampling_steps,
+            probe_num_steps=probe_num_steps,
+            probe_indices=probe_indices,
+        )
+        logger.info(
+            "Saving motion latent probes at denoising step index/indices: %s",
+            probe_recorder.indices,
+        )
     
     '''
     INFO: the quant inference, however, no quantizer is applied, so no loading the quant_params
@@ -255,7 +311,8 @@ def main():
     prompt_as_path = cfg.get("prompt_as_path", False)
 
         # == Iter over all samples ==
-    for i in progress_wrap(range(0, len(prompts), batch_size)):
+    total_batches = (len(prompts) + batch_size - 1) // batch_size
+    for i in progress_wrap(range(0, len(prompts), batch_size), desc="calib prompts", total=total_batches):
         # == prepare batch prompts ==
         batch_prompts = prompts[i : i + batch_size]
         ms = mask_strategy[i : i + batch_size]
@@ -382,9 +439,10 @@ def main():
                     prompts=batch_prompts_loop,
                     device=device,
                     additional_args=model_args,
-                    progress=verbose >= 2,
+                    progress=verbose >= 1,
                     mask=masks,
                     precompute_text_embeds=precompute_text_embeds,
+                    probe_recorder=probe_recorder,
                 )
                 samples = vae.decode(samples.to(dtype), num_frames=num_frames)
                 video_clips.append(samples)
@@ -420,6 +478,21 @@ def main():
         v.hook_handle.remove()
 
     torch.save(save_d, quant_config.calib_data.save_path)
+    if probe_recorder is not None:
+        probe_save_path = motion_cfg.get("probe_cache_path", "./motion_probe_cache.pth")
+        probe_dir = os.path.dirname(probe_save_path)
+        if probe_dir:
+            os.makedirs(probe_dir, exist_ok=True)
+        torch.save(
+            {
+                "records": probe_recorder.records,
+                "probe_indices": probe_recorder.indices,
+                "num_sampling_steps": scheduler.num_sampling_steps,
+                "num_records": len(probe_recorder.records),
+            },
+            probe_save_path,
+        )
+        logger.info("Saved %s motion latent probe(s) to %s", len(probe_recorder.records), probe_save_path)
 
 if __name__ == "__main__":
     main()

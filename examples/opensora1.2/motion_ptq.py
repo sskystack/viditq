@@ -72,7 +72,10 @@ def main():
     logger = create_logger()
     logger.info("Inference configuration:\n %s", pformat(cfg.to_dict()))
     verbose = cfg.get("verbose", 1)
-    progress_wrap = tqdm if verbose == 1 else (lambda x: x)
+    def progress_wrap(iterable, desc=None, total=None):
+        if verbose == 1:
+            return tqdm(iterable, desc=desc, total=total, dynamic_ncols=True)
+        return iterable
     calib_data = None
     
     # INFO: precompute the text embeds to avoid loading the T5 repeatedly
@@ -248,12 +251,66 @@ def main():
         logger.info(f"Built motion clip params from calib_data for {len(clip_dict)} motion-quantized layer(s).")
         return clip_dict
 
+    def move_probe_arg(value):
+        if isinstance(value, torch.Tensor):
+            if torch.is_floating_point(value):
+                return value.to(device=device, dtype=dtype)
+            return value.to(device=device)
+        return value
+
+    def replay_motion_probe_calibration():
+        motion_cfg = quant_config.get("motion_ptq", None)
+        if motion_cfg is None or not motion_cfg.get("enabled", False):
+            return {}
+
+        probe_cache_path = motion_cfg.get("probe_cache_path", "./motion_probe_cache.pth")
+        if not os.path.exists(probe_cache_path):
+            raise FileNotFoundError(
+                f"motion_ptq.clip_calib_mode='probe_replay' requires latent probe cache: {probe_cache_path}. "
+                "Run get_calib_data.py first with the same config."
+            )
+
+        probe_cache = torch.load(probe_cache_path, map_location="cpu", weights_only=False)
+        records = probe_cache.get("records", [])
+        if len(records) == 0:
+            raise ValueError(f"No motion latent probes found in {probe_cache_path}.")
+
+        logger.info(
+            "Replaying %s motion latent probe(s) from %s for bucket-wise activation clips.",
+            len(records),
+            probe_cache_path,
+        )
+        model.enable_motion_calibration(enabled=True, reset=True, observe_only=True)
+        model.set_init_done()
+
+        replay_iter = tqdm(records, desc="motion probe replay", dynamic_ncols=True) if verbose >= 1 else records
+        with torch.no_grad():
+            for record_idx, record in enumerate(replay_iter):
+                z = record["latent"].to(device=device, dtype=dtype)
+                timestep = record["timestep"].to(device=device, dtype=dtype)
+                model_args = {key: move_probe_arg(value) for key, value in record["model_args"].items()}
+                z_in = torch.cat([z, z], 0)
+                t_in = torch.cat([timestep, timestep], 0)
+                _ = model(z_in, t_in, **model_args)
+                if verbose >= 1 and hasattr(replay_iter, "set_postfix"):
+                    replay_iter.set_postfix(
+                        step=record.get("step_index", "?"),
+                        done=f"{record_idx + 1}/{len(records)}",
+                    )
+
+        model.enable_motion_calibration(enabled=False, reset=False, observe_only=False)
+        motion_clip_dict = model.get_motion_clip_dict()
+        logger.info(f"Replayed motion probes and collected clip stats for {len(motion_clip_dict)} layer(s).")
+        return motion_clip_dict
+
     def run_motion_clip_calibration():
         motion_cfg = quant_config.get("motion_ptq", None)
         if motion_cfg is None or not motion_cfg.get("enabled", False):
             return {}
 
         clip_calib_mode = motion_cfg.get("clip_calib_mode", "act_calib")
+        if clip_calib_mode == "probe_replay":
+            return replay_motion_probe_calibration()
         if clip_calib_mode == "act_calib":
             return build_motion_clip_from_calib_data()
         if clip_calib_mode == "none":
@@ -288,7 +345,8 @@ def main():
         mask_strategy = cfg.get("mask_strategy", [""] * len(prompts))
 
         with torch.no_grad():
-            for i in progress_wrap(range(0, len(prompts), batch_size)):
+            total_batches = (len(prompts) + batch_size - 1) // batch_size
+            for i in progress_wrap(range(0, len(prompts), batch_size), desc="motion clip prompts", total=total_batches):
                 batch_prompts = prompts[i : i + batch_size]
                 refs = reference_path[i : i + batch_size]
                 ms = mask_strategy[i : i + batch_size]
@@ -309,7 +367,7 @@ def main():
                     prompts=batch_prompts,
                     device=device,
                     additional_args=model_args,
-                    progress=verbose >= 2,
+                    progress=verbose >= 1,
                     mask=masks,
                     precompute_text_embeds=False,
                 )
