@@ -36,8 +36,8 @@ text_encoder = dict(
 scheduler = dict(
     type="rflow",
     use_timestep_transform=True,
-    num_sampling_steps=30,
-    cfg_scale=7.0,
+    num_sampling_steps=100,
+    cfg_scale=4.0,
 )
 
 aes = 6.5
