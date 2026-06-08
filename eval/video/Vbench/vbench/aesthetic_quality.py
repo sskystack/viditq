@@ -1,4 +1,5 @@
 import os
+import gc
 import clip
 import torch
 import torch.nn as nn
@@ -7,6 +8,15 @@ import subprocess
 from urllib.request import urlretrieve
 from vbench.utils import load_video, load_dimension_info, clip_transform
 from tqdm import tqdm
+
+
+def encode_images_microbatched(clip_model, images, micro_batch_size):
+    feats = []
+    with torch.no_grad():
+        for start in range(0, images.shape[0], micro_batch_size):
+            batch = images[start : start + micro_batch_size]
+            feats.append(clip_model.encode_image(batch).to(torch.float32))
+    return torch.cat(feats, dim=0)
 
 
 def get_aesthetic_model(cache_folder):
@@ -39,19 +49,24 @@ def laion_aesthetic(aesthetic_model, clip_model, video_list, device):
     aesthetic_avg = 0.0
     num = 0
     video_results = []
+    micro_batch_size = int(os.environ.get("VBENCH_CLIP_MICRO_BATCH_SIZE", "1"))
     for video_path in tqdm(video_list):
         images = load_video(video_path)
         image_transform = clip_transform(224)
         images = image_transform(images)
         images = images.to(device)
-        image_feats = clip_model.encode_image(images).to(torch.float32)
+        image_feats = encode_images_microbatched(clip_model, images, micro_batch_size)
         image_feats = F.normalize(image_feats, dim=-1, p=2)
-        aesthetic_scores = aesthetic_model(image_feats).squeeze()
+        with torch.no_grad():
+            aesthetic_scores = aesthetic_model(image_feats).squeeze()
         normalized_aesthetic_scores = aesthetic_scores/10
         cur_avg = torch.mean(normalized_aesthetic_scores, dim=0, keepdim=True)
         aesthetic_avg += cur_avg.item()
         num += 1
         video_results.append({'video_path': video_path, 'video_results': cur_avg.item()})
+        del images, image_feats, aesthetic_scores, normalized_aesthetic_scores
+        gc.collect()
+        torch.cuda.empty_cache()
     aesthetic_avg /= num
     return aesthetic_avg, video_results
 

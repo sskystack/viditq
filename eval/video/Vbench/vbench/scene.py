@@ -1,5 +1,6 @@
 import os
 import json
+import gc
 
 import torch
 import numpy as np
@@ -15,6 +16,13 @@ def get_caption(model, image_arrays):
     caption, tag_predict = model.generate(image_arrays, tag_input = None, return_tag_predict = True)
     return caption
 
+def get_caption_microbatched(model, image_arrays, micro_batch_size=1):
+    captions = []
+    for start in range(0, image_arrays.shape[0], micro_batch_size):
+        batch = image_arrays[start : start + micro_batch_size]
+        captions.extend(get_caption(model, batch))
+    return captions
+
 def check_generate(key_info, predictions):
     cur_cnt = 0
     key = key_info['scene']
@@ -24,7 +32,7 @@ def check_generate(key_info, predictions):
             cur_cnt +=1
     return cur_cnt
 
-def scene(model, video_dict, device):
+def scene(model, video_dict, device, micro_batch_size=1):
     success_frame_count, frame_count = 0,0
     video_results = []
     transform = tag2text_transform(384)
@@ -38,12 +46,16 @@ def scene(model, video_dict, device):
             for i in video_array:
                 video_tensor_list.append(transform(i).to(device).unsqueeze(0))
             video_tensor = torch.cat(video_tensor_list)
-            cur_video_pred = get_caption(model, video_tensor)
+            with torch.no_grad():
+                cur_video_pred = get_caption_microbatched(model, video_tensor, micro_batch_size=micro_batch_size)
             cur_success_frame_count = check_generate(scene_info, cur_video_pred)
             cur_success_frame_rate = cur_success_frame_count/len(cur_video_pred)
             success_frame_count += cur_success_frame_count
             frame_count += len(cur_video_pred)
             video_results.append({'video_path': video_path, 'video_results': cur_success_frame_rate})
+            del video_tensor, video_tensor_list, video_array
+            gc.collect()
+            torch.cuda.empty_cache()
     success_rate = success_frame_count / frame_count
     return success_rate, video_results
         
@@ -54,5 +66,6 @@ def compute_scene(json_dir, device, submodules_dict):
     model = model.to(device)
     logger.info("Initialize caption model success")
     _, prompt_dict_ls = load_dimension_info(json_dir, dimension='scene', lang='en')
-    all_results, video_results = scene(model, prompt_dict_ls, device)
+    micro_batch_size = int(os.environ.get("VBENCH_SCENE_MICRO_BATCH_SIZE", "1"))
+    all_results, video_results = scene(model, prompt_dict_ls, device, micro_batch_size=micro_batch_size)
     return all_results, video_results

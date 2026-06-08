@@ -53,9 +53,6 @@ if __name__ == "__main__":
     os.makedirs(output_dir, exist_ok=True)
     video_path = args.video_folder
 
-    kwargs = {}
-    kwargs["imaging_quality_preprocessing_mode"] = "longer"  # use VBench/evaluate.py default
-
     start_time = time.time()
 
     # NOTE: important to use torch.device("cuda"), else will have issue with object_class third_party module
@@ -72,8 +69,6 @@ if __name__ == "__main__":
             local=args.local,
             read_frame=False,
             dimension_list=[dim],
-            mode="vbench_standard",
-            **kwargs,
         )
 
     print("Runtime: %s seconds " % (time.time() - start_time))

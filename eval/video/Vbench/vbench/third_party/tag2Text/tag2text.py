@@ -23,6 +23,38 @@ import json
 import math
 import numpy as np
 
+def has_bert_base_uncased_files(path):
+    if not os.path.isdir(path):
+        return False
+    has_config = os.path.isfile(os.path.join(path, "config.json"))
+    has_vocab = os.path.isfile(os.path.join(path, "vocab.txt"))
+    has_weights = any(
+        os.path.isfile(os.path.join(path, name))
+        for name in ("pytorch_model.bin", "model.safetensors")
+    )
+    return has_config and has_vocab and has_weights
+
+def get_bert_base_uncased_path():
+    cache_dir = os.environ.get("VBENCH_CACHE_DIR", "/root/data-fs/models/vbench")
+    local_path = os.environ.get("VBENCH_BERT_BASE_UNCASED", os.path.join(cache_dir, "bert-base-uncased"))
+    if has_bert_base_uncased_files(local_path):
+        return local_path
+    os.makedirs(local_path, exist_ok=True)
+    try:
+        from huggingface_hub import snapshot_download
+        snapshot_download(
+            repo_id="bert-base-uncased",
+            local_dir=local_path,
+            local_dir_use_symlinks=False,
+        )
+    except Exception as e:
+        print(f"Failed to download bert-base-uncased to {local_path}: {e}")
+        return "bert-base-uncased"
+    if has_bert_base_uncased_files(local_path):
+        return local_path
+    return "bert-base-uncased"
+
+
 def read_json(rpath):
     with open(rpath, 'r') as f:
         return json.load(f)
@@ -97,7 +129,7 @@ class Tag2Text_Caption(nn.Module):
 
         q2l_config = BertConfig.from_json_file(f'{CUR_DIR}/q2l_config.json')
         q2l_config.encoder_width = vision_width
-        self.vision_multi = BertModel.from_pretrained('bert-base-uncased',config=q2l_config, add_pooling_layer=False)
+        self.vision_multi = BertModel.from_pretrained(get_bert_base_uncased_path(),config=q2l_config, add_pooling_layer=False)
         self.vision_multi.resize_token_embeddings(len(self.tokenizer)) 
         self.label_embed = nn.Embedding(self.num_class, q2l_config.hidden_size)
         self.fc =  GroupWiseLinear(self.num_class, num_features, bias=True)
@@ -327,7 +359,7 @@ class GroupWiseLinear(nn.Module):
 
 
 def init_tokenizer():
-    tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
+    tokenizer = BertTokenizer.from_pretrained(get_bert_base_uncased_path())
     tokenizer.add_special_tokens({'bos_token':'[DEC]'})
     tokenizer.add_special_tokens({'additional_special_tokens':['[ENC]']})       
     tokenizer.enc_token_id = tokenizer.additional_special_tokens_ids[0]  

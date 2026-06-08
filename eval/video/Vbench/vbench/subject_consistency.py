@@ -58,8 +58,16 @@ def subject_consistency(model, video_list, device, read_frame):
 
 
 def compute_subject_consistency(json_dir, device, submodules_list):
-    dino_model = torch.hub.load(**submodules_list).to(device)
-    read_frame = submodules_list['read_frame']
+    submodules = dict(submodules_list)
+    read_frame = submodules.pop('read_frame')
+    ckpt_path = submodules.pop('path', None)
+    if ckpt_path is not None:
+        submodules['pretrained'] = False
+    dino_model = torch.hub.load(**submodules)
+    if ckpt_path is not None:
+        state_dict = torch.load(ckpt_path, map_location='cpu')
+        dino_model.load_state_dict(state_dict, strict=True)
+    dino_model = dino_model.to(device)
     logger.info("Initialize DINO success")
     video_list, _ = load_dimension_info(json_dir, dimension='subject_consistency', lang='en')
     all_results, video_results = subject_consistency(dino_model, video_list, device, read_frame)

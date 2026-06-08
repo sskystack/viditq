@@ -748,6 +748,7 @@ python -m pip install -U huggingface_hub hf_xet
 mkdir -p ./vbench_ckpts/dino_model
 mkdir -p ./vbench_ckpts/ViCLIP
 mkdir -p ./vbench_ckpts/caption_model
+mkdir -p ./vbench_ckpts/bert-base-uncased
 mkdir -p ./src
 
 git clone https://github.com/facebookresearch/dino \
@@ -765,6 +766,9 @@ wget -O ./vbench_ckpts/ViCLIP/bpe_simple_vocab_16e6.txt.gz \
 
 wget -O ./vbench_ckpts/caption_model/tag2text_swin_14m.pth \
   https://huggingface.co/spaces/xinyu1205/recognize-anything/resolve/main/tag2text_swin_14m.pth
+
+hf download bert-base-uncased \
+  --local-dir ./vbench_ckpts/bert-base-uncased
 
 git clone https://github.com/openai/CLIP ./src/CLIP
 ```
@@ -791,6 +795,8 @@ ls /root/data-fs/models/vbench/dino_model/dino_vitbase16_pretrain.pth
 ls /root/data-fs/models/vbench/ViCLIP/ViClip-InternVid-10M-FLT.pth
 ls /root/data-fs/models/vbench/ViCLIP/bpe_simple_vocab_16e6.txt.gz
 ls /root/data-fs/models/vbench/caption_model/tag2text_swin_14m.pth
+ls /root/data-fs/models/vbench/bert-base-uncased/config.json
+ls /root/data-fs/models/vbench/bert-base-uncased/vocab.txt
 ls /root/data-fs/src/CLIP
 ```
 

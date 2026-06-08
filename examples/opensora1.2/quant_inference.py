@@ -46,14 +46,27 @@ def main():
     # ======================================================
     # == parse configs ==
     cfg = parse_configs(training=False)
-    device = "cuda" if torch.cuda.is_available() else "cpu"
+    data_parallel = cfg.get("data_parallel", False)
+    local_rank = int(os.environ.get("LOCAL_RANK", 0))
+    rank = int(os.environ.get("RANK", local_rank))
+    world_size = int(os.environ.get("WORLD_SIZE", 1))
+    if data_parallel and torch.cuda.is_available():
+        torch.cuda.set_device(local_rank)
+        device = f"cuda:{local_rank}"
+    else:
+        device = "cuda" if torch.cuda.is_available() else "cpu"
     cfg_dtype = cfg.get("dtype", "fp32")
     assert cfg_dtype in ["fp16", "bf16", "fp32"], f"Unknown mixed precision {cfg_dtype}"
     dtype = to_torch_dtype(cfg.get("dtype", "bf16"))
     torch.backends.cuda.matmul.allow_tf32 = True
     torch.backends.cudnn.allow_tf32 = True
     # == init distributed env ==
-    if is_distributed():
+    if data_parallel and world_size > 1:
+        if not dist.is_initialized():
+            dist.init_process_group(backend="nccl")
+        coordinator = None
+        enable_sequence_parallelism = False
+    elif is_distributed():
         colossalai.launch_from_torch({})
         coordinator = DistCoordinator()
         enable_sequence_parallelism = coordinator.world_size > 1
@@ -67,9 +80,12 @@ def main():
     
     # == bakup some files ==
     import shutil
-    if os.path.exists(os.path.join(cfg.save_dir,'configs')):
-        shutil.rmtree(os.path.join(cfg.save_dir,'configs'))
-    shutil.copytree('./configs', os.path.join(cfg.save_dir,'configs'))
+    if (not data_parallel) or rank == 0:
+        if os.path.exists(os.path.join(cfg.save_dir,'configs')):
+            shutil.rmtree(os.path.join(cfg.save_dir,'configs'))
+        shutil.copytree('./configs', os.path.join(cfg.save_dir,'configs'))
+    if data_parallel and world_size > 1:
+        dist.barrier()
 
     # == init logger ==
     logger = create_logger()
@@ -177,6 +193,13 @@ def main():
         else:
             prompts = [cfg.get("prompt_generator", "")] * 1_000_000  # endless loop
             import ipdb; ipdb.set_trace()
+
+    if data_parallel and world_size > 1:
+        total_prompts = len(prompts)
+        shard_start = total_prompts * rank // world_size
+        shard_end = total_prompts * (rank + 1) // world_size
+        prompts = prompts[shard_start:shard_end]
+        start_idx += shard_start
     
     # == prepare reference ==
     reference_path = cfg.get("reference_path", [""] * len(prompts))
@@ -363,7 +386,7 @@ def main():
                 video_clips.append(samples)
 
             # == save samples ==
-            if is_main_process():
+            if data_parallel or is_main_process():
                 for idx, batch_prompt in enumerate(batch_prompts):
                     if verbose >= 2:
                         logger.info("Prompt: %s", batch_prompt)
