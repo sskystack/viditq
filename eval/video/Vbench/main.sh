@@ -1,6 +1,6 @@
 export HF_ENDPOINT=https://hf-mirror.com
 #cd $YOUR_PATH/diffuser-dev/clean_eval/Vbench # Location of evaluate.py file
-#export VBENCH_CACHE_DIR="/share/public/video_quant/vm_ckpt/" # Local download directory
+#export VBENCH_CACHE_DIR="/home/zhouchongtian/quantization/models/vbench/" # Local download directory
 
 current_time=$(date +"%Y%m%d%H%M%S")
 JSON="/share/public/video_quant/wanrui/VBench/evaluation_results/human_action_full_info.json"

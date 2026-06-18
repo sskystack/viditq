@@ -97,7 +97,7 @@ class Tag2Text_Caption(nn.Module):
 
         q2l_config = BertConfig.from_json_file(f'{CUR_DIR}/q2l_config.json')
         q2l_config.encoder_width = vision_width
-        self.vision_multi = BertModel.from_pretrained('bert-base-uncased',config=q2l_config, add_pooling_layer=False)
+        self.vision_multi = BertModel.from_pretrained(os.environ.get("VBENCH_BERT_DIR", "/home/zhouchongtian/quantization/models/vbench/bert-base-uncased"),config=q2l_config, add_pooling_layer=False)
         self.vision_multi.resize_token_embeddings(len(self.tokenizer)) 
         self.label_embed = nn.Embedding(self.num_class, q2l_config.hidden_size)
         self.fc =  GroupWiseLinear(self.num_class, num_features, bias=True)
@@ -327,7 +327,7 @@ class GroupWiseLinear(nn.Module):
 
 
 def init_tokenizer():
-    tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
+    tokenizer = BertTokenizer.from_pretrained(os.environ.get("VBENCH_BERT_DIR", "/home/zhouchongtian/quantization/models/vbench/bert-base-uncased"))
     tokenizer.add_special_tokens({'bos_token':'[DEC]'})
     tokenizer.add_special_tokens({'additional_special_tokens':['[ENC]']})       
     tokenizer.enc_token_id = tokenizer.additional_special_tokens_ids[0]  
