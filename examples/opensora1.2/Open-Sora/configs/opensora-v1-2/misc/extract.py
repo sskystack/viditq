@@ -36,14 +36,14 @@ wandb = False
 # Model settings
 model = dict(
     type="STDiT3-XL/2",
-    from_pretrained="hpcai-tech/OpenSora-STDiT-v3",
+    from_pretrained="/home/zhouchongtian/quantization/models/hpcai-tech/OpenSora-STDiT-v3",
     qk_norm=True,
     enable_flash_attn=True,
     enable_layernorm_kernel=True,
 )
 vae = dict(
     type="OpenSoraVAE_V1_2",
-    from_pretrained="hpcai-tech/OpenSora-VAE-v1.2",
+    from_pretrained="/home/zhouchongtian/quantization/models/hpcai-tech/OpenSora-VAE-v1.2",
     micro_frame_size=17,
     micro_batch_size=32,
 )

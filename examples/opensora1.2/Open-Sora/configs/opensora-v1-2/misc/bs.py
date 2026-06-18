@@ -70,7 +70,7 @@ model = dict(
 )
 vae = dict(
     type="OpenSoraVAE_V1_2",
-    from_pretrained="hpcai-tech/OpenSora-VAE-v1.2",
+    from_pretrained="/home/zhouchongtian/quantization/models/hpcai-tech/OpenSora-VAE-v1.2",
     micro_frame_size=17,
     micro_batch_size=4,
 )

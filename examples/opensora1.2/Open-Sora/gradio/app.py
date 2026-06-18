@@ -24,7 +24,7 @@ WATERMARK_PATH = "./assets/images/watermark/watermark.png"
 CONFIG_MAP = {
     "v1.2-stage3": "configs/opensora-v1-2/inference/sample.py",
 }
-HF_STDIT_MAP = {"v1.2-stage3": "hpcai-tech/OpenSora-STDiT-v3"}
+HF_STDIT_MAP = {"v1.2-stage3": "/home/zhouchongtian/quantization/models/hpcai-tech/OpenSora-STDiT-v3"}
 
 
 # ============================
