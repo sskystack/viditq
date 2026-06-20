@@ -2,5 +2,5 @@ colossalai
 gdown
 mmengine
 pre-commit
-pyav
+av
 wandb

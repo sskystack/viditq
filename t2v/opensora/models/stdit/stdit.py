@@ -273,8 +273,9 @@ class STDiT(nn.Module):
             from qdiff.quantizer.dynamic_quantizer import DynamicActQuantizer
             # DIRTY, assume that all layers in the stdit model share the same quantization configuration
             MASK_SELECT = True
-            if not isinstance(self.final_layer.linear.act_quantizer, DynamicActQuantizer): # static quant param
-                if self.final_layer.linear.act_quantizer.per_group == 'token':
+            act_quantizer = getattr(self.final_layer.linear, "act_quantizer", None)
+            if act_quantizer is not None and not isinstance(act_quantizer, DynamicActQuantizer): # static quant param
+                if act_quantizer.per_group == 'token':
                     MASK_SELECT = False
 
             if MASK_SELECT:

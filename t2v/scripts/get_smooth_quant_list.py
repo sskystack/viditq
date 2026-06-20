@@ -186,7 +186,7 @@ def main():
     input_data = select_calib_data(calib_data, data_num, select_type="timestep_range", t_start=t_start, t_end=t_end, device=device)
     data_input, data_output = get_data_list(model, module_dict, input_data)
     
-    part_fp_list = "/share/liuenshu/Open-Sora/configs/quant/remain_fp.txt"
+    part_fp_list = "./t2v/configs/quant/opensora/remain_fp.txt"
     with open(part_fp_list,'r') as f:
         lines = f.readlines()
     fp_layer_list = [line.strip() for line in lines]  # strip the '\n'

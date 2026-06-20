@@ -1,5 +1,6 @@
 from functools import partial
 
+import os
 import torch
 
 from opensora.registry import SCHEDULERS
@@ -165,13 +166,15 @@ def forward_with_cfg(model, x, timestep, y, cfg_scale, return_trajectory=False, 
 
     # INFO: for PTQD, the correlated noise correction & the 
 
-    ks = torch.load('./t2v/rebuttal_files/k_for_each_timestep.pth')
-    # calib_quant_noise = torch.load('./rebuttal_files/calibrated_quant_noise.pth')
-    # the correlated noise correction
-    timestep_idx = (999 - timestep[0]) // 50  # for 20 timesteps
-    model_out = model_out / (1+ks[timestep_idx])
-    # the bias correction
-    # model_out = model_out - calib_quant_noise[timestep]
+    correction_path = './t2v/rebuttal_files/k_for_each_timestep.pth'
+    if os.path.exists(correction_path):
+        ks = torch.load(correction_path, map_location=model_out.device if torch.is_tensor(model_out) else 'cpu')
+        # calib_quant_noise = torch.load('./rebuttal_files/calibrated_quant_noise.pth')
+        # the correlated noise correction
+        timestep_idx = (999 - timestep[0]) // 50  # for 20 timesteps
+        model_out = model_out / (1+ks[timestep_idx])
+        # the bias correction
+        # model_out = model_out - calib_quant_noise[timestep]
 
     save_model_out = model_out
     model_out = model_out["x"] if isinstance(model_out, dict) else model_out

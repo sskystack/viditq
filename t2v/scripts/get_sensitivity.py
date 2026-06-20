@@ -481,7 +481,7 @@ def main():
                 quant_time_list = [i * (n_step) // split_timestep for i in range(split_timestep)]
 
                 # 从txt文件中读取模型层名字
-                with open('/home/fangtongcheng/quant_dit/diffuser-dev/layer_names.txt', 'r') as f:
+                with open('./t2v/layer_names.txt', 'r') as f:
                     layers = f.read().splitlines()
 
                 group_name = opt.group_quant  ###############################################
@@ -535,7 +535,7 @@ def main():
             # quant_time_list = [i * (n_step) // split_timestep for i in range(split_timestep)]
 
             # 从txt文件中读取模型层名字
-            with open('/home/fangtongcheng/quant_dit/diffuser-dev/layer_names.txt', 'r') as f:
+            with open('./t2v/layer_names.txt', 'r') as f:
                 layers = f.read().splitlines()
 
             # group_name = opt.group_quant  ###############################################
@@ -579,7 +579,7 @@ def main():
         elif opt.block_wise_quant:
 
             # 从txt文件中读取模型层名字
-            with open('/home/fangtongcheng/quant_dit/diffuser-dev/layer_names.txt', 'r') as f:
+            with open('./t2v/layer_names.txt', 'r') as f:
                 layers = f.read().splitlines()
 
             for j in range(28):

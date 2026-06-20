@@ -7,19 +7,19 @@ model = dict(
     type="STDiT-XL/2",
     space_scale=1.0,
     time_scale=1.0,
-    enable_flashattn=True, # default is True
+    enable_flashattn=False, # default is True
     enable_layernorm_kernel=False, # default is True
     from_pretrained="PRETRAINED_MODEL"
 )
 vae = dict(
     type="VideoAutoencoderKL",
-    from_pretrained="stabilityai/sd-vae-ft-ema",
+    from_pretrained="/home/zhouchongtian/quantization/models/stabilityai/sd-vae-ft-ema",
     micro_batch_size=128,
 )
 text_encoder = dict(
     type="t5",
     # from_pretrained="./pretrained_models/t5_ckpts",
-    from_pretrained="DeepFloyd/t5-v1_1-xxl",
+    from_pretrained="/home/zhouchongtian/quantization/models/DeepFloyd/t5-v1_1-xxl",
     model_max_length=120,
 )
 scheduler = dict(

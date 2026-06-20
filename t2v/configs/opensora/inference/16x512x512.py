@@ -7,19 +7,19 @@ model = dict(
     type="STDiT-XL/2",
     space_scale=1.0,
     time_scale=1.0,
-    enable_flashattn=True, # default is True
+    enable_flashattn=False, # default is True
     enable_layernorm_kernel=False, # default is True
     from_pretrained="PRETRAINED_MODEL"
 )
 vae = dict(
     type="VideoAutoencoderKL",
-    from_pretrained="/mnt/public/liuenshu/temp_files/checkpoints/huggingface/sd-vae-ft-ema",
+    from_pretrained="/home/zhouchongtian/quantization/models/stabilityai/sd-vae-ft-ema",
     micro_batch_size=128,
 )
 text_encoder = dict(
     type="t5",
-    from_pretrained="./t2v/pretrained_models/t5_ckpts",
-    save_pretrained="/mnt/public/liuenshu/temp_files/checkpoints/text_encoder/pretrained_t5",
+    from_pretrained="/home/zhouchongtian/quantization/models/DeepFloyd",
+    save_pretrained="/home/zhouchongtian/quantization/models/DeepFloyd/t5-v1_1-xxl",
     model_max_length=120,
 )
 scheduler = dict(
@@ -32,6 +32,6 @@ dtype = "fp16"
 # Others
 batch_size = 1
 seed = 42
-prompt_path = "/home/fangtongcheng/viditq/diffuser-dev/t2v/assets/texts/t2v_samples.txt"
+prompt_path = "./t2v/assets/texts/t2v_samples.txt"
 # save_dir = "./generated_videos/fp16"
 

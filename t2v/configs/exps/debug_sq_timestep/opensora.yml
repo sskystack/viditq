@@ -7,7 +7,7 @@ conditional: True
 # mixed_precision: [4,6,8]
 # timestep_wise: True
 calib_data:
-    path: "/share/liuenshu/temp_files/video_quant/calib_data.pt"
+    path: "./logs_50steps/calib_data_ddim50_cfg4_t2v_samples/calib_data.pt"
     n_steps: 10    # calib_data_sample_steps = total setps // n_steps
     batch_size: 4  # used for quant param initialization
     n_samples: 10
